@@ -52,8 +52,16 @@ jobs:
           VER="${{ steps.version.outputs.new_tag }}"
           VER="${VER#v}"
           DATE="$(date +%Y-%m-%d)"
-          CHANGES="$(git log --oneline $(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo '')..HEAD | sed 's/^/- /')"
-          sed -i "/^## \[Unreleased\]/a \\\n## [$VER] - $DATE\n$CHANGES" CHANGELOG.md
+          PREV_TAG="$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo '')"
+          CHANGES="$(git log --oneline ${PREV_TAG:+$PREV_TAG..}HEAD | sed 's/^/- /')"
+
+          {
+            echo ""
+            echo "## [$VER] - $DATE"
+            echo "$CHANGES"
+          } > /tmp/changelog_entry.txt
+
+          sed -i "/^## \[Unreleased\]/r /tmp/changelog_entry.txt" CHANGELOG.md
 
       - name: Commit and push
         run: |
