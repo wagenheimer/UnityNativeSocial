@@ -72,7 +72,10 @@ NativeSocial.ShowAchievementsUI();
 
 ## Steam Setup
 
-To enable Steam integration, add `WAGENHEIMER_NATIVESOCIAL_STEAM` to your project's Scripting Define Symbols (Project Settings → Player → Scripting Define Symbols).
+Steam integration is enabled automatically — the package's asmdef defines
+`WAGENHEIMER_NATIVESOCIAL_STEAM` via `versionDefines` whenever
+`com.rlabrecque.steamworks.net` (Steamworks.NET) is present in your project.
+No manual Scripting Define Symbols setup is required.
 
 ## API
 

@@ -17,8 +17,18 @@ using Steamworks;
 
 namespace Wagenheimer.NativeSocial
 {
+    /// <summary>
+    /// Platform-native replacement for Unity's deprecated <c>UnityEngine.Social</c> API.
+    /// Dispatches achievement/stat calls directly to Google Play Games (Android),
+    /// Game Center (iOS), or Steamworks.NET (Steam desktop builds) based on the
+    /// active compile-time platform. Callers use a single, platform-agnostic API and
+    /// never touch the underlying SDKs directly.
+    /// </summary>
     public static class NativeSocial
     {
+        // Per-platform achievement ID maps: game-defined "LocID" -> platform-specific achievement ID.
+        // Keeping these as data (rather than hardcoding platform IDs across game code) means a single
+        // Initialize() call at startup is the only place platform IDs need to be configured.
         private static Dictionary<string, string> _androidMap;
         private static Dictionary<string, string> _iosMap;
         private static Dictionary<string, SteamEntry> _steamMap;
@@ -42,10 +52,18 @@ namespace Wagenheimer.NativeSocial
         // ── Status ────────────────────────────────────────────────────
 
 #if UNITY_ANDROID
+        /// <summary>
+        /// Whether the player is currently signed in to Google Play Games.
+        /// Set this from your GPGS sign-in callback; achievement calls are no-ops until then.
+        /// </summary>
         public static bool IsAuthenticated { get; set; }
 #endif
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM
+        /// <summary>
+        /// Whether the Steamworks API has finished initializing (e.g. <c>SteamManager.Initialized</c>).
+        /// Set this once Steam is ready; stat/achievement calls are no-ops until then.
+        /// </summary>
         public static bool SteamReady { get; set; }
 #endif
 
@@ -67,6 +85,8 @@ namespace Wagenheimer.NativeSocial
                 return;
             }
 
+            // Exactly one of these branches is compiled in per build target — there is
+            // no runtime platform switch here, each build only ever contains its own path.
 #if UNITY_ANDROID
             ReportAndroid(locId, delta, completed);
 #elif UNITY_IOS
@@ -77,6 +97,7 @@ namespace Wagenheimer.NativeSocial
         }
 
 #if UNITY_ANDROID
+        /// <summary>Increments/unlocks the mapped Google Play Games achievement.</summary>
         private static void ReportAndroid(string locId, int delta, bool completed)
         {
             if (!IsAuthenticated || locId == null) return;
@@ -91,12 +112,15 @@ namespace Wagenheimer.NativeSocial
 #endif
 
 #if UNITY_IOS
+        /// <summary>Reports the mapped Game Center achievement as a 0-100% completion percentage.</summary>
         private static void ReportIOS(string locId, int current, int total, bool completed)
         {
             if (locId == null) return;
             if (!_iosMap.TryGetValue(locId, out var gcId)) return;
             if (total <= 0) return;
 
+            // Game Center achievements are percentage-based rather than increment-based,
+            // so we derive a percent from current/total instead of using delta directly.
             double percent = completed
                 ? 100.0
                 : Math.Min((double)current / total * 100.0, 99.0);
@@ -110,6 +134,7 @@ namespace Wagenheimer.NativeSocial
 #endif
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM
+        /// <summary>Updates the mapped Steam stat/achievement and flushes to Steam only when something changed.</summary>
         private static void ReportSteam(string locId, int delta, bool completed)
         {
             if (!SteamReady || locId == null) return;
@@ -132,6 +157,8 @@ namespace Wagenheimer.NativeSocial
                 }
             }
 
+            // SetStat/SetAchievement only update the local cache — StoreStats() is what
+            // actually pushes the change to Steam, so only call it when something changed.
             if (dirty)
                 SteamUserStats.StoreStats();
         }
@@ -161,6 +188,11 @@ namespace Wagenheimer.NativeSocial
         }
 
 #if UNITY_ANDROID
+        /// <summary>
+        /// Re-unlocks every already-completed achievement on Google Play Games.
+        /// Needed because local save data can be ahead of the platform (e.g. offline progress,
+        /// account switch, reinstall) — UnlockAchievement is idempotent, so this is safe to repeat.
+        /// </summary>
         private static void SyncCompletedAndroid(IEnumerable<string> completedLocIds)
         {
             if (!IsAuthenticated) return;
@@ -174,6 +206,7 @@ namespace Wagenheimer.NativeSocial
 #endif
 
 #if UNITY_IOS
+        /// <summary>Re-reports 100% progress for every already-completed achievement on Game Center.</summary>
         private static void SyncCompletedIOS(IEnumerable<string> completedLocIds)
         {
             foreach (var locId in completedLocIds)
@@ -186,6 +219,7 @@ namespace Wagenheimer.NativeSocial
 #endif
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM
+        /// <summary>Re-unlocks every already-completed achievement on Steam, storing once at the end.</summary>
         private static void SyncCompletedSteam(IEnumerable<string> completedLocIds)
         {
             if (!SteamReady) return;
@@ -208,6 +242,7 @@ namespace Wagenheimer.NativeSocial
 
         // ── Platform UI ───────────────────────────────────────────────
 
+        /// <summary>Opens the platform-native achievements screen (Google Play Games or Game Center).</summary>
         public static void ShowAchievementsUI()
         {
 #if UNITY_ANDROID
@@ -216,15 +251,26 @@ namespace Wagenheimer.NativeSocial
 #elif UNITY_IOS
             GameCenterPlatform.ShowAchievementsUI();
 #else
+            // Steam has no built-in achievements overlay API exposed through Steamworks.NET
+            // for this purpose (it's driven by the Steam client's own overlay), so there is
+            // intentionally no branch here for Steam — callers should show their own UI instead.
             Debug.LogWarning("[NativeSocial] ShowAchievementsUI not implemented on this platform.");
 #endif
         }
 
         // ── Authentication ────────────────────────────────────────────
 
+        /// <summary>
+        /// Authenticates with Game Center on iOS. No-op (always reports failure) on other platforms,
+        /// since Android uses GPGS's own sign-in flow and Steam authenticates automatically via SteamAPI.Init().
+        /// </summary>
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS
+            // UnityEngine.SocialPlatforms.Social (the deprecated Unity Social API) is still the only
+            // entry point Unity exposes for Game Center authentication — GameCenterPlatform itself has
+            // no direct Authenticate method. This is an intentional, unavoidable use of the deprecated
+            // API surface, not leftover code to "clean up"; removing it would break iOS auth entirely.
             Social.localUser.Authenticate(success => callback?.Invoke(success));
 #else
             callback?.Invoke(false);
@@ -237,7 +283,10 @@ namespace Wagenheimer.NativeSocial
     /// <summary>Steam achievement definition (stat + achievement API name).</summary>
     public struct SteamEntry
     {
+        /// <summary>Steamworks stat API name (e.g. "STAT_WILDCARDS"), or empty if this achievement has no backing stat.</summary>
         public string Stat;
+
+        /// <summary>Steamworks achievement API name (e.g. "ACH_WILDCARDS").</summary>
         public string Achievement;
 
         public SteamEntry(string stat, string achievement)

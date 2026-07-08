@@ -1,18 +1,33 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.Requests;
 using System;
 
 namespace Wagenheimer.NativeSocial.Editor
 {
+    /// <summary>
+    /// Modal-ish utility window shown by <see cref="UpdateChecker"/> when a newer package
+    /// version is available on GitHub. Lets the user update via UPM, view the full
+    /// changelog, snooze, or permanently ignore that specific version.
+    /// </summary>
     internal class UpdateAvailableWindow : EditorWindow
     {
-        private static string _repoUrl = "https://github.com/wagenheimer/UnityNativeSocial";
-        private static string _gitUrl = "https://github.com/wagenheimer/UnityNativeSocial.git";
+        private static readonly string RepoUrl = "https://github.com/wagenheimer/UnityNativeSocial";
+        private static readonly string GitUrl = "https://github.com/wagenheimer/UnityNativeSocial.git";
+        private const string SkipVersionKey = "Wagenheimer_NativeSocial_SkipVersion";
+
         private Version _local;
         private Version _latest;
         private string _changelogNotes;
         private Vector2 _scroll;
+
+        // In-flight UPM "add" request, polled from EditorApplication.update instead of
+        // blocked on synchronously — Client.Add() is asynchronous, and busy-waiting on
+        // request.IsCompleted on the main thread would freeze the entire editor UI.
+        private AddRequest _addRequest;
+        private bool _updating;
+        private string _updateError;
 
         public static void Show(Version local, Version latest, string changelogNotes)
         {
@@ -44,21 +59,19 @@ namespace Wagenheimer.NativeSocial.Editor
                 EditorGUILayout.Space();
             }
 
+            if (!string.IsNullOrEmpty(_updateError))
+                EditorGUILayout.HelpBox(_updateError, MessageType.Error);
+
             EditorGUILayout.BeginHorizontal();
 
-            if (GUILayout.Button("Update Now", GUILayout.Height(32)))
+            using (new EditorGUI.DisabledScope(_updating))
             {
-                var request = Client.Add(_gitUrl);
-                while (!request.IsCompleted) { }
-                if (request.Status == StatusCode.Success)
-                    Debug.Log($"[NativeSocial] Updated to {_latest}");
-                else
-                    Debug.LogError($"[NativeSocial] Update failed: {request.Error?.message}");
-                Close();
+                if (GUILayout.Button(_updating ? "Updating..." : "Update Now", GUILayout.Height(32)))
+                    StartUpdate();
             }
 
             if (GUILayout.Button("View Full Changelog", GUILayout.Height(32)))
-                Application.OpenURL($"{_repoUrl}/releases/tag/v{_latest}");
+                Application.OpenURL($"{RepoUrl}/releases/tag/v{_latest}");
 
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space();
@@ -70,11 +83,50 @@ namespace Wagenheimer.NativeSocial.Editor
 
             if (GUILayout.Button("Ignore This Version"))
             {
-                EditorPrefs.SetString("Wagenheimer_NativeSocial_SkipVersion", _latest.ToString());
+                EditorPrefs.SetString(SkipVersionKey, _latest.ToString());
                 Close();
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private void StartUpdate()
+        {
+            _updating = true;
+            _updateError = null;
+            _addRequest = Client.Add(GitUrl);
+            EditorApplication.update += PollUpdate;
+        }
+
+        private void PollUpdate()
+        {
+            if (_addRequest == null || !_addRequest.IsCompleted)
+                return;
+
+            EditorApplication.update -= PollUpdate;
+
+            // The window may have been closed while the request was in flight.
+            if (this == null)
+                return;
+
+            _updating = false;
+
+            if (_addRequest.Status == StatusCode.Success)
+            {
+                Debug.Log($"[NativeSocial] Updated to {_addRequest.Result.version}");
+                Close();
+            }
+            else
+            {
+                _updateError = _addRequest.Error?.message ?? "Unknown error while updating.";
+                Debug.LogError($"[NativeSocial] Update failed: {_updateError}");
+                Repaint();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            EditorApplication.update -= PollUpdate;
         }
     }
 }

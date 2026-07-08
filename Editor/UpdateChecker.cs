@@ -1,5 +1,4 @@
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using System;
 using System.Net;
@@ -7,19 +6,30 @@ using System.Text.RegularExpressions;
 
 namespace Wagenheimer.NativeSocial.Editor
 {
+    /// <summary>
+    /// Checks GitHub once a day for a newer release of this package and, if one is
+    /// found, shows <see cref="UpdateAvailableWindow"/> with the changelog notes.
+    /// Runs automatically on editor load and can also be triggered manually from the menu.
+    /// </summary>
     [InitializeOnLoad]
     internal static class UpdateChecker
     {
         private const string PkgName = "com.wagenheimer.nativesocial";
         private const string RepoUrl = "https://github.com/wagenheimer/UnityNativeSocial";
-        private const string RawPkgUrl = RepoUrl + "/main/package.json";
-        private const string RawChangelogUrl = RepoUrl + "/main/CHANGELOG.md";
+
+        // NOTE: must point at raw.githubusercontent.com, not the github.com repo page —
+        // the latter returns an HTML wrapper, not the raw file content, so the regex/parse
+        // below would never match. Branch is "master" (this repo's default branch).
+        private const string RawPkgUrl = "https://raw.githubusercontent.com/wagenheimer/UnityNativeSocial/master/package.json";
+        private const string RawChangelogUrl = "https://raw.githubusercontent.com/wagenheimer/UnityNativeSocial/master/CHANGELOG.md";
+
         private const string EditorPrefsKey = "Wagenheimer_NativeSocial_LastUpdateCheck";
         private const string SkipVersionKey = "Wagenheimer_NativeSocial_SkipVersion";
         private const double CheckIntervalHours = 24;
 
         static UpdateChecker()
         {
+            // Defer past editor startup so this never delays domain reload / compilation.
             EditorApplication.delayCall += Check;
         }
 
@@ -31,6 +41,7 @@ namespace Wagenheimer.NativeSocial.Editor
 
         private static async void Check()
         {
+            // Throttle to once per CheckIntervalHours so we don't hit GitHub on every editor load.
             var lastCheck = EditorPrefs.GetString(EditorPrefsKey, "");
             if (!string.IsNullOrEmpty(lastCheck))
             {
@@ -51,6 +62,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 var remoteVersion = new System.Version(match.Groups[1].Value);
                 if (remoteVersion <= localVersion) return;
 
+                // User previously chose "Ignore This Version" for this exact release — respect it.
                 var skipVersion = EditorPrefs.GetString(SkipVersionKey, "");
                 if (skipVersion == remoteVersion.ToString()) return;
 
@@ -61,17 +73,28 @@ namespace Wagenheimer.NativeSocial.Editor
                     var notesMatch = Regex.Match(changelog, $"##\\s*\\[?{remoteVersion}\\]?[^\\n]*\\n(.*?)(?=\\n##|\\Z)", RegexOptions.Singleline);
                     if (notesMatch.Success) changelogNotes = notesMatch.Groups[1].Value.Trim();
                 }
-                catch { }
+                catch
+                {
+                    // Changelog is best-effort only; missing/unreachable notes shouldn't block the update prompt.
+                }
 
                 EditorPrefs.SetString(EditorPrefsKey, DateTime.UtcNow.ToString("O"));
                 UpdateAvailableWindow.Show(localVersion, remoteVersion, changelogNotes);
             }
-            catch { }
+            catch
+            {
+                // Network failures (offline, GitHub down, rate-limited, etc.) should be silent —
+                // this is a background convenience check, not a required editor feature.
+            }
         }
 
+        /// <summary>Reads the installed package version via UPM, using the assembly that ships with this package.</summary>
         private static Version GetLocalVersion()
         {
-            var info = PackageInfo.FindForAssembly(typeof(NativeSocial).Assembly);
+            // Fully qualified: UnityEditor also defines a (different, obsolete) PackageInfo type,
+            // so an unqualified "PackageInfo" here is ambiguous between the two namespaces (CS0104)
+            // when both `using UnityEditor;` and `using UnityEditor.PackageManager;` are in scope.
+            var info = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(NativeSocial).Assembly);
             return info != null && Version.TryParse(info.version, out var v) ? v : null;
         }
     }

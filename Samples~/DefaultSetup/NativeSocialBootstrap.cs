@@ -1,6 +1,11 @@
 using UnityEngine;
 using Wagenheimer.NativeSocial;
 
+/// <summary>
+/// Sample bootstrap component: builds the per-platform achievement ID maps from
+/// Inspector-configured entries and calls <see cref="NativeSocial.Initialize"/> once at startup.
+/// Copy this into your project and adapt it, or use it as a reference for your own bootstrap code.
+/// </summary>
 public class NativeSocialBootstrap : MonoBehaviour
 {
     [Header("Android (Google Play Games)")]
@@ -14,6 +19,7 @@ public class NativeSocialBootstrap : MonoBehaviour
 
     private void Awake()
     {
+        // Convert the Inspector-friendly array entries into the dictionaries NativeSocial.Initialize expects.
         var androidMap = new System.Collections.Generic.Dictionary<string, string>();
         foreach (var e in androidAchievements)
             if (!string.IsNullOrEmpty(e.LocID) && !string.IsNullOrEmpty(e.PlatformID))
@@ -33,6 +39,7 @@ public class NativeSocialBootstrap : MonoBehaviour
         Debug.Log("[NativeSocial] Initialized with achievement maps.");
     }
 
+    /// <summary>Maps a game-defined LocID to a platform-specific achievement ID (Android/iOS).</summary>
     [System.Serializable]
     public class AchievementMapEntry
     {
@@ -40,6 +47,7 @@ public class NativeSocialBootstrap : MonoBehaviour
         public string PlatformID;
     }
 
+    /// <summary>Maps a game-defined LocID to a Steam stat name and achievement API name.</summary>
     [System.Serializable]
     public class SteamAchievementMapEntry
     {

@@ -2,9 +2,17 @@
   "name": "Wagenheimer.NativeSocial",
   "rootNamespace": "Wagenheimer.NativeSocial",
   "references": [
-    "Google.Play.Games"
+    "Google.Play.Games",
+    "com.rlabrecque.steamworks.net"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
-  "autoReferenced": true
+  "autoReferenced": true,
+  "versionDefines": [
+    {
+      "name": "com.rlabrecque.steamworks.net",
+      "expression": "",
+      "define": "WAGENHEIMER_NATIVESOCIAL_STEAM"
+    }
+  ]
 }

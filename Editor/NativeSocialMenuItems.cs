@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace Wagenheimer.NativeSocial.Editor
 {
+    /// <summary>Convenience shortcuts under Tools/Wagenheimer/Native Social for docs and issue reporting.</summary>
     internal static class NativeSocialMenuItems
     {
         [MenuItem("Tools/Wagenheimer/Native Social/Integration Guide", priority = 30)]
