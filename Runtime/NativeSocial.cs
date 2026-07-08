@@ -38,6 +38,9 @@ namespace Wagenheimer.NativeSocial
         /// Register achievement ID maps per platform.
         /// Must be called once at game startup before any Report/Auth calls.
         /// </summary>
+        /// <param name="androidMap">Maps game-defined LocID -> Google Play Games achievement ID (e.g. "CgkI_aXR36YSEAIQAQ"). Pass null if not targeting Android.</param>
+        /// <param name="iosMap">Maps game-defined LocID -> Game Center achievement ID (e.g. "com.example.wildcards"). Pass null if not targeting iOS.</param>
+        /// <param name="steamMap">Maps game-defined LocID -> <see cref="SteamEntry"/> (Steam stat + achievement API names). Pass null if not targeting Steam.</param>
         public static void Initialize(
             Dictionary<string, string> androidMap = null,
             Dictionary<string, string> iosMap = null,
@@ -70,13 +73,22 @@ namespace Wagenheimer.NativeSocial
         // ── Report ────────────────────────────────────────────────────
 
         /// <summary>
-        /// Report achievement progress to the active platform.
+        /// Report achievement progress to the active platform. Dispatches to whichever of
+        /// <see cref="ReportAndroid"/>/<see cref="ReportIOS"/>/<see cref="ReportSteam"/> matches
+        /// the current build target — pass all five parameters every time and let each platform
+        /// use only the ones it needs (Android/Steam use <paramref name="delta"/>, iOS uses
+        /// <paramref name="current"/>/<paramref name="total"/>).
         /// </summary>
-        /// <param name="locId">Local identifier (key in the map passed to Initialize).</param>
-        /// <param name="delta">How much the counter increased (used by Android/Steam).</param>
-        /// <param name="current">Current counter value (used by iOS for percentage).</param>
-        /// <param name="total">Total needed to complete (used by iOS for percentage).</param>
-        /// <param name="completed">Whether the achievement is fully completed.</param>
+        /// <param name="locId">Game-defined achievement key (the key used in the maps passed to <see cref="Initialize"/>). Identifies which achievement this call is for.</param>
+        /// <param name="delta">
+        /// How much the underlying counter/stat should increase by since the last call
+        /// (e.g. "+1 wildcard collected just now"). Used by Android (GPGS IncrementAchievement)
+        /// and Steam (adds to the mapped stat). Pass 0 when you only want to report/check
+        /// <paramref name="completed"/> without bumping a counter.
+        /// </param>
+        /// <param name="current">Current absolute progress value (e.g. "5 of 20 wildcards collected"). Only used by iOS, which reports achievements as a 0-100% completion percentage rather than an incrementing counter.</param>
+        /// <param name="total">Progress value that represents 100% completion (e.g. 20 wildcards total). Only used by iOS, alongside <paramref name="current"/>, to compute that percentage.</param>
+        /// <param name="completed">Whether the achievement is fully completed right now. When true, all platforms unlock/complete it outright regardless of the counter parameters.</param>
         public static void Report(string locId, int delta, int current, int total, bool completed)
         {
             if (!_initialized)
@@ -98,6 +110,9 @@ namespace Wagenheimer.NativeSocial
 
 #if UNITY_ANDROID
         /// <summary>Increments/unlocks the mapped Google Play Games achievement.</summary>
+        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_androidMap"/> to find the GPGS achievement ID.</param>
+        /// <param name="delta">How much to increment the GPGS incremental-achievement counter by. 0 or negative means "don't increment" (e.g. a completed-only call).</param>
+        /// <param name="completed">If true, unlocks the achievement outright regardless of its counter state.</param>
         private static void ReportAndroid(string locId, int delta, bool completed)
         {
             if (!IsAuthenticated || locId == null) return;
@@ -113,6 +128,10 @@ namespace Wagenheimer.NativeSocial
 
 #if UNITY_IOS
         /// <summary>Reports the mapped Game Center achievement as a 0-100% completion percentage.</summary>
+        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_iosMap"/> to find the Game Center achievement ID.</param>
+        /// <param name="current">Current progress count (e.g. 5 wildcards collected so far). Combined with <paramref name="total"/> to compute the percentage Game Center expects.</param>
+        /// <param name="total">Progress count needed to fully complete the achievement (e.g. 20 wildcards). Must be &gt; 0 or the report is skipped.</param>
+        /// <param name="completed">If true, reports 100% regardless of <paramref name="current"/>/<paramref name="total"/>.</param>
         private static void ReportIOS(string locId, int current, int total, bool completed)
         {
             if (locId == null) return;
@@ -135,13 +154,19 @@ namespace Wagenheimer.NativeSocial
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM
         /// <summary>Updates the mapped Steam stat/achievement and flushes to Steam only when something changed.</summary>
+        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_steamMap"/> to find the Steam stat/achievement API names.</param>
+        /// <param name="delta">How much to add to the Steam stat (<see cref="SteamEntry.Stat"/>), e.g. +1 wildcard collected. 0 or negative means "don't touch the stat".</param>
+        /// <param name="completed">If true, unlocks the Steam achievement (<see cref="SteamEntry.Achievement"/>) if it isn't already unlocked.</param>
         private static void ReportSteam(string locId, int delta, bool completed)
         {
             if (!SteamReady || locId == null) return;
             if (!_steamMap.TryGetValue(locId, out var entry)) return;
 
+            // Only call StoreStats() (see below) if we actually changed something this call.
             bool dirty = false;
 
+            // GetStat reads the current cached value so we can add delta to it — Steam has no
+            // "increment stat by N" call, only "set stat to this absolute value".
             if (delta > 0 && !string.IsNullOrEmpty(entry.Stat) && SteamUserStats.GetStat(entry.Stat, out int current))
             {
                 SteamUserStats.SetStat(entry.Stat, current + delta);
@@ -150,6 +175,8 @@ namespace Wagenheimer.NativeSocial
 
             if (completed && !string.IsNullOrEmpty(entry.Achievement))
             {
+                // GetAchievement's out param tells us whether it's already unlocked — skip
+                // re-unlocking (and marking dirty) if there's nothing to do.
                 if (!SteamUserStats.GetAchievement(entry.Achievement, out bool already) || !already)
                 {
                     SteamUserStats.SetAchievement(entry.Achievement);
@@ -163,7 +190,12 @@ namespace Wagenheimer.NativeSocial
                 SteamUserStats.StoreStats();
         }
 
-        /// <summary>Flush pending Steam stats to disk/server. Call on game save.</summary>
+        /// <summary>
+        /// Flush pending Steam stats/achievements to Steam's servers. Call this whenever the
+        /// game saves — <see cref="ReportSteam"/> and <see cref="SyncCompletedSteam"/> already
+        /// call <c>SteamUserStats.StoreStats()</c> themselves when something changes, so this is
+        /// a safety-net flush for any edge cases (e.g. process termination) rather than the only place it happens.
+        /// </summary>
         public static void Flush()
         {
             if (SteamReady)
@@ -173,7 +205,13 @@ namespace Wagenheimer.NativeSocial
 
         // ── Sync completed ────────────────────────────────────────────
 
-        /// <summary>Sync already-completed achievements after platform auth.</summary>
+        /// <summary>
+        /// Re-syncs already-completed achievements to the platform. Call this right after
+        /// authentication succeeds (Android GPGS sign-in, iOS Game Center auth, Steam ready),
+        /// since the platform's own record can be behind the game's local save (new device,
+        /// reinstall, offline progress, switching accounts).
+        /// </summary>
+        /// <param name="completedLocIds">The LocIDs (from the maps passed to <see cref="Initialize"/>) of every achievement already marked completed in the local save data.</param>
         public static void SyncCompleted(IEnumerable<string> completedLocIds)
         {
             if (!_initialized || completedLocIds == null) return;
@@ -193,6 +231,7 @@ namespace Wagenheimer.NativeSocial
         /// Needed because local save data can be ahead of the platform (e.g. offline progress,
         /// account switch, reinstall) — UnlockAchievement is idempotent, so this is safe to repeat.
         /// </summary>
+        /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_androidMap"/> to find each GPGS achievement ID.</param>
         private static void SyncCompletedAndroid(IEnumerable<string> completedLocIds)
         {
             if (!IsAuthenticated) return;
@@ -207,6 +246,7 @@ namespace Wagenheimer.NativeSocial
 
 #if UNITY_IOS
         /// <summary>Re-reports 100% progress for every already-completed achievement on Game Center.</summary>
+        /// <param name="completedLocIds">LocIDs of achievements to re-report, looked up in <see cref="_iosMap"/> to find each Game Center achievement ID.</param>
         private static void SyncCompletedIOS(IEnumerable<string> completedLocIds)
         {
             foreach (var locId in completedLocIds)
@@ -220,6 +260,7 @@ namespace Wagenheimer.NativeSocial
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM
         /// <summary>Re-unlocks every already-completed achievement on Steam, storing once at the end.</summary>
+        /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_steamMap"/> to find each Steam achievement API name.</param>
         private static void SyncCompletedSteam(IEnumerable<string> completedLocIds)
         {
             if (!SteamReady) return;
@@ -264,6 +305,7 @@ namespace Wagenheimer.NativeSocial
         /// Authenticates with Game Center on iOS. No-op (always reports failure) on other platforms,
         /// since Android uses GPGS's own sign-in flow and Steam authenticates automatically via SteamAPI.Init().
         /// </summary>
+        /// <param name="callback">Invoked with true on successful Game Center authentication, false on failure or on any non-iOS platform.</param>
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS
@@ -289,6 +331,8 @@ namespace Wagenheimer.NativeSocial
         /// <summary>Steamworks achievement API name (e.g. "ACH_WILDCARDS").</summary>
         public string Achievement;
 
+        /// <param name="stat">Steamworks stat API name, or empty/null if this achievement has no backing stat (only unlocks, never increments).</param>
+        /// <param name="achievement">Steamworks achievement API name.</param>
         public SteamEntry(string stat, string achievement)
         {
             Stat = stat;

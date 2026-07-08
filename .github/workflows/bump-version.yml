@@ -2,7 +2,7 @@ name: Bump version
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths-ignore:
       - 'package.json'
       - 'CHANGELOG.md'
@@ -36,7 +36,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: true
           DEFAULT_BUMP: ${{ steps.bump.outputs.type }}
-          RELEASE_BRANCHES: main
+          RELEASE_BRANCHES: master
 
       - name: Update package.json
         run: |
