@@ -1,0 +1,21 @@
+{
+  "name": "com.wagenheimer.nativesocial",
+  "version": "1.0.0",
+  "displayName": "Native Social",
+  "description": "Platform-native social API wrapper for Android (Google Play Games), iOS (Game Center) and Steam. Replaces Unity's deprecated Social class with direct platform calls.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Cezar Wagenheimer",
+    "url": "https://github.com/wagenheimer"
+  },
+  "keywords": [
+    "social",
+    "achievements",
+    "google play games",
+    "game center",
+    "steam",
+    "gpgs"
+  ],
+  "category": "Tools",
+  "dependencies": {}
+}

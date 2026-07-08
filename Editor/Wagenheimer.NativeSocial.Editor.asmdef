@@ -1,0 +1,9 @@
+{
+  "name": "Wagenheimer.NativeSocial.Editor",
+  "rootNamespace": "Wagenheimer.NativeSocial.Editor",
+  "references": [
+    "Wagenheimer.NativeSocial"
+  ],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

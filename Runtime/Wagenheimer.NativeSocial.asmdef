@@ -1,0 +1,8 @@
+{
+  "name": "Wagenheimer.NativeSocial",
+  "rootNamespace": "Wagenheimer.NativeSocial",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "autoReferenced": true
+}
