@@ -1,7 +1,9 @@
 {
   "name": "Wagenheimer.NativeSocial",
   "rootNamespace": "Wagenheimer.NativeSocial",
-  "references": [],
+  "references": [
+    "Google.Play.Games"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "autoReferenced": true
