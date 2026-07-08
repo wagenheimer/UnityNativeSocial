@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- `NativeSocial.ShowAchievementsUI()` now returns `bool` instead of `void`: true when a native achievements screen was shown, false when there is none for the current platform/state (e.g. Steam/standalone has no scriptable achievements overlay, or Android where the player isn't signed in). Callers should show their own custom achievements UI when it returns false.
 
 ## [1.0.2] - 2026-07-08
 ### Fixed

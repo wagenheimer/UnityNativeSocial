@@ -283,19 +283,29 @@ namespace Wagenheimer.NativeSocial
 
         // ── Platform UI ───────────────────────────────────────────────
 
-        /// <summary>Opens the platform-native achievements screen (Google Play Games or Game Center).</summary>
-        public static void ShowAchievementsUI()
+        /// <summary>
+        /// Opens the platform-native achievements screen (Google Play Games or Game Center), if one is available.
+        /// </summary>
+        /// <returns>
+        /// True if a native achievements screen was actually shown. False when there is no native
+        /// UI to show for the current platform/state — on Android this means the player isn't signed
+        /// in yet; on Steam/standalone there is no scriptable achievements overlay in Steamworks.NET
+        /// at all (the Steam overlay is entirely driven by the Steam client, not by game code). Callers
+        /// should treat false as "show your own custom achievements screen instead" (e.g. MainMenu falls
+        /// back to its <c>formAchievements</c> dialog on PC).
+        /// </returns>
+        public static bool ShowAchievementsUI()
         {
 #if UNITY_ANDROID
-            if (IsAuthenticated)
-                PlayGamesPlatform.Instance.ShowAchievementsUI();
+            if (!IsAuthenticated) return false;
+            PlayGamesPlatform.Instance.ShowAchievementsUI();
+            return true;
 #elif UNITY_IOS
             GameCenterPlatform.ShowAchievementsUI();
+            return true;
 #else
-            // Steam has no built-in achievements overlay API exposed through Steamworks.NET
-            // for this purpose (it's driven by the Steam client's own overlay), so there is
-            // intentionally no branch here for Steam — callers should show their own UI instead.
-            Debug.LogWarning("[NativeSocial] ShowAchievementsUI not implemented on this platform.");
+            // Steam/standalone: no native UI exists to show, so the caller must provide its own.
+            return false;
 #endif
         }
 
