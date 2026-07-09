@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-09
+- 0deb51e feat: fix manual check ignoring 24h throttle, show dialog, redesign popup
+- 93b9b40 chore: bump version to v1.0.3
+
 ## [1.0.3] - 2026-07-08
 - a7c1fe6 fix: corrige geracao do CHANGELOG.md no workflow de bump de versao
 ### Changed
