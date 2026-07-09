@@ -13,6 +13,9 @@ namespace Wagenheimer.NativeSocial.Editor
     /// </summary>
     internal class UpdateAvailableWindow : EditorWindow
     {
+        const string PackageDisplayName = "Native Social";
+        static readonly Color AccentColor = new Color(0.24f, 0.48f, 0.95f);
+
         private static readonly string RepoUrl = "https://github.com/wagenheimer/UnityNativeSocial";
         private static readonly string GitUrl = "https://github.com/wagenheimer/UnityNativeSocial.git";
         private const string SkipVersionKey = "Wagenheimer_NativeSocial_SkipVersion";
@@ -20,7 +23,7 @@ namespace Wagenheimer.NativeSocial.Editor
         private Version _local;
         private Version _latest;
         private string _changelogNotes;
-        private Vector2 _scroll;
+        private Vector2 _notesScroll;
 
         // In-flight UPM "add" request, polled from EditorApplication.update instead of
         // blocked on synchronously — Client.Add() is asynchronous, and busy-waiting on
@@ -29,65 +32,175 @@ namespace Wagenheimer.NativeSocial.Editor
         private bool _updating;
         private string _updateError;
 
+        Texture2D _headerTex;
+        Texture2D _dividerTex;
+        GUIStyle _headerTitleStyle;
+        GUIStyle _headerSubtitleStyle;
+        GUIStyle _arrowStyle;
+        GUIStyle _primaryButtonStyle;
+        GUIStyle _footerStyle;
+        bool _stylesBuilt;
+
         public static void Show(Version local, Version latest, string changelogNotes)
         {
             var w = CreateInstance<UpdateAvailableWindow>();
-            w.titleContent = new GUIContent("Native Social Update");
+            w.titleContent = new GUIContent($"{PackageDisplayName} — Atualização");
             w._local = local;
             w._latest = latest;
-            w._changelogNotes = changelogNotes;
-            w.minSize = new Vector2(420, 320);
+            w._changelogNotes = string.IsNullOrEmpty(changelogNotes)
+                ? "Sem notas de versão disponíveis — veja o changelog completo no GitHub."
+                : changelogNotes;
+
+            var size = new Vector2(460, 420);
+            w.minSize = size;
+            w.maxSize = new Vector2(640, 760);
             w.ShowUtility();
+        }
+
+        void BuildStyles()
+        {
+            if (_stylesBuilt)
+                return;
+            _stylesBuilt = true;
+
+            var dark = EditorGUIUtility.isProSkin;
+            var headerBg = dark ? new Color(0.17f, 0.17f, 0.19f) : new Color(0.90f, 0.92f, 0.97f);
+            var dividerColor = dark ? new Color(1f, 1f, 1f, 0.08f) : new Color(0f, 0f, 0f, 0.10f);
+
+            _headerTex = MakeTex(headerBg);
+            _dividerTex = MakeTex(dividerColor);
+
+            _headerTitleStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 15,
+                normal = { textColor = dark ? Color.white : new Color(0.12f, 0.12f, 0.14f) }
+            };
+
+            _headerSubtitleStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 11,
+                normal = { textColor = dark ? new Color(1f, 1f, 1f, 0.6f) : new Color(0f, 0f, 0f, 0.55f) }
+            };
+
+            _arrowStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = AccentColor }
+            };
+
+            _primaryButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontStyle = FontStyle.Bold
+            };
+
+            _footerStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = dark ? new Color(1f, 1f, 1f, 0.4f) : new Color(0f, 0f, 0f, 0.4f) }
+            };
+        }
+
+        static Texture2D MakeTex(Color color)
+        {
+            var tex = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+            tex.SetPixel(0, 0, color);
+            tex.Apply();
+            return tex;
         }
 
         private void OnGUI()
         {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Update Available", EditorStyles.boldLabel);
-            EditorGUILayout.Space();
+            BuildStyles();
 
-            EditorGUILayout.LabelField($"Current version:  {_local}");
-            EditorGUILayout.LabelField($"Latest version:   {_latest}");
-            EditorGUILayout.Space();
+            var headerRect = GUILayoutUtility.GetRect(position.width, 56);
+            GUI.DrawTexture(headerRect, _headerTex);
+            var innerHeader = new Rect(headerRect.x + 16, headerRect.y + 8, headerRect.width - 32, headerRect.height - 12);
+            GUI.BeginGroup(innerHeader);
+            GUI.Label(new Rect(0, 0, innerHeader.width, 20), "Nova versão disponível", _headerTitleStyle);
+            GUI.Label(new Rect(0, 20, innerHeader.width, 16), PackageDisplayName, _headerSubtitleStyle);
+            GUI.EndGroup();
 
-            if (!string.IsNullOrEmpty(_changelogNotes))
+            DrawDivider();
+            GUILayout.Space(12);
+
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField("Release Notes:", EditorStyles.boldLabel);
-                _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.Height(120));
-                EditorGUILayout.HelpBox(_changelogNotes, MessageType.Info);
-                EditorGUILayout.EndScrollView();
-                EditorGUILayout.Space();
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(_local.ToString(), EditorStyles.label);
+                GUILayout.Label("→", _arrowStyle, GUILayout.Width(22));
+                GUILayout.Label(_latest.ToString(), EditorStyles.boldLabel);
+                GUILayout.FlexibleSpace();
             }
+
+            GUILayout.Space(14);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(12);
+            GUILayout.Label("Novidades desta versão", EditorStyles.boldLabel);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(12);
+            _notesScroll = EditorGUILayout.BeginScrollView(_notesScroll, GUILayout.ExpandHeight(true));
+            EditorGUILayout.LabelField(_changelogNotes, EditorStyles.wordWrappedLabel, GUILayout.ExpandWidth(true));
+            EditorGUILayout.EndScrollView();
+            GUILayout.Space(12);
+            GUILayout.EndHorizontal();
 
             if (!string.IsNullOrEmpty(_updateError))
+            {
+                GUILayout.Space(6);
                 EditorGUILayout.HelpBox(_updateError, MessageType.Error);
-
-            EditorGUILayout.BeginHorizontal();
-
-            using (new EditorGUI.DisabledScope(_updating))
-            {
-                if (GUILayout.Button(_updating ? "Updating..." : "Update Now", GUILayout.Height(32)))
-                    StartUpdate();
             }
 
-            if (GUILayout.Button("View Full Changelog", GUILayout.Height(32)))
-                Application.OpenURL($"{RepoUrl}/releases/tag/v{_latest}");
+            GUILayout.Space(10);
+            DrawDivider();
+            GUILayout.Space(10);
 
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.Space();
-
-            EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Remind Later"))
-                Close();
-
-            if (GUILayout.Button("Ignore This Version"))
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorPrefs.SetString(SkipVersionKey, _latest.ToString());
-                Close();
+                GUILayout.Space(10);
+                var prevColor = GUI.backgroundColor;
+                GUI.backgroundColor = AccentColor;
+                using (new EditorGUI.DisabledScope(_updating))
+                {
+                    if (GUILayout.Button(_updating ? "Atualizando…" : "Atualizar Agora", _primaryButtonStyle, GUILayout.Height(30), GUILayout.MinWidth(140)))
+                        StartUpdate();
+                }
+                GUI.backgroundColor = prevColor;
+
+                if (GUILayout.Button("Ver Changelog", GUILayout.Height(30)))
+                    Application.OpenURL($"{RepoUrl}/releases/tag/v{_latest}");
+                GUILayout.Space(10);
             }
 
-            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(6);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(10);
+                if (GUILayout.Button("Lembrar depois", EditorStyles.miniButton))
+                    Close();
+
+                if (GUILayout.Button("Ignorar esta versão", EditorStyles.miniButton))
+                {
+                    EditorPrefs.SetString(SkipVersionKey, _latest.ToString());
+                    Close();
+                }
+                GUILayout.Space(10);
+            }
+
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(12);
+            GUILayout.Label(RepoUrl, _footerStyle);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(6);
+        }
+
+        void DrawDivider()
+        {
+            var rect = GUILayoutUtility.GetRect(position.width, 1, GUILayout.ExpandWidth(true));
+            GUI.DrawTexture(rect, _dividerTex);
         }
 
         private void StartUpdate()
@@ -127,6 +240,8 @@ namespace Wagenheimer.NativeSocial.Editor
         private void OnDestroy()
         {
             EditorApplication.update -= PollUpdate;
+            if (_headerTex != null) DestroyImmediate(_headerTex);
+            if (_dividerTex != null) DestroyImmediate(_dividerTex);
         }
     }
 }
