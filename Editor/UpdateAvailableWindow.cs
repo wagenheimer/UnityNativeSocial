@@ -44,11 +44,11 @@ namespace Wagenheimer.NativeSocial.Editor
         public static void Show(Version local, Version latest, string changelogNotes)
         {
             var w = CreateInstance<UpdateAvailableWindow>();
-            w.titleContent = new GUIContent($"{PackageDisplayName} — Atualização");
+            w.titleContent = new GUIContent($"{PackageDisplayName} — Update");
             w._local = local;
             w._latest = latest;
             w._changelogNotes = string.IsNullOrEmpty(changelogNotes)
-                ? "Sem notas de versão disponíveis — veja o changelog completo no GitHub."
+                ? "No release notes available — see the full changelog on GitHub."
                 : changelogNotes;
 
             var size = new Vector2(460, 420);
@@ -115,7 +115,7 @@ namespace Wagenheimer.NativeSocial.Editor
             GUI.DrawTexture(headerRect, _headerTex);
             var innerHeader = new Rect(headerRect.x + 16, headerRect.y + 8, headerRect.width - 32, headerRect.height - 12);
             GUI.BeginGroup(innerHeader);
-            GUI.Label(new Rect(0, 0, innerHeader.width, 20), "Nova versão disponível", _headerTitleStyle);
+            GUI.Label(new Rect(0, 0, innerHeader.width, 20), "New version available", _headerTitleStyle);
             GUI.Label(new Rect(0, 20, innerHeader.width, 16), PackageDisplayName, _headerSubtitleStyle);
             GUI.EndGroup();
 
@@ -135,7 +135,7 @@ namespace Wagenheimer.NativeSocial.Editor
 
             GUILayout.BeginHorizontal();
             GUILayout.Space(12);
-            GUILayout.Label("Novidades desta versão", EditorStyles.boldLabel);
+            GUILayout.Label("What's new in this version", EditorStyles.boldLabel);
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
 
@@ -164,12 +164,12 @@ namespace Wagenheimer.NativeSocial.Editor
                 GUI.backgroundColor = AccentColor;
                 using (new EditorGUI.DisabledScope(_updating))
                 {
-                    if (GUILayout.Button(_updating ? "Atualizando…" : "Atualizar Agora", _primaryButtonStyle, GUILayout.Height(30), GUILayout.MinWidth(140)))
+                    if (GUILayout.Button(_updating ? "Updating..." : "Update Now", _primaryButtonStyle, GUILayout.Height(30), GUILayout.MinWidth(140)))
                         StartUpdate();
                 }
                 GUI.backgroundColor = prevColor;
 
-                if (GUILayout.Button("Ver Changelog", GUILayout.Height(30)))
+                if (GUILayout.Button("View Changelog", GUILayout.Height(30)))
                     Application.OpenURL($"{RepoUrl}/releases/tag/v{_latest}");
                 GUILayout.Space(10);
             }
@@ -178,10 +178,10 @@ namespace Wagenheimer.NativeSocial.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(10);
-                if (GUILayout.Button("Lembrar depois", EditorStyles.miniButton))
+                if (GUILayout.Button("Remind me later", EditorStyles.miniButton))
                     Close();
 
-                if (GUILayout.Button("Ignorar esta versão", EditorStyles.miniButton))
+                if (GUILayout.Button("Skip this version", EditorStyles.miniButton))
                 {
                     EditorPrefs.SetString(SkipVersionKey, _latest.ToString());
                     Close();

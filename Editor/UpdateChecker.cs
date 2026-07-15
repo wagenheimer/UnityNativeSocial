@@ -61,7 +61,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 Debug.Log("[NativeSocial] Update check failed: could not resolve the installed package version " +
                     "(PackageInfo.FindForAssembly returned null for this assembly).");
                 if (force)
-                    EditorUtility.DisplayDialog(PackageDisplayName, "Falha ao verificar atualizações: não foi possível identificar a versão instalada deste pacote.", "OK");
+                    EditorUtility.DisplayDialog(PackageDisplayName, "Failed to check for updates: could not identify the installed version of this package.", "OK");
                 return;
             }
 
@@ -74,7 +74,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 {
                     Debug.Log("[NativeSocial] Update check failed: remote package.json has no version field.");
                     if (force)
-                        EditorUtility.DisplayDialog(PackageDisplayName, "Falha ao verificar atualizações: o package.json remoto não tem campo de versão.", "OK");
+                        EditorUtility.DisplayDialog(PackageDisplayName, "Failed to check for updates: remote package.json has no version field.", "OK");
                     return;
                 }
 
@@ -83,7 +83,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 {
                     Debug.Log($"[NativeSocial] Up to date (installed: {localVersion}).");
                     if (force)
-                        EditorUtility.DisplayDialog(PackageDisplayName, $"Você já está usando a versão mais recente ({localVersion}).", "OK");
+                        EditorUtility.DisplayDialog(PackageDisplayName, $"You are already using the latest version ({localVersion}).", "OK");
                     return;
                 }
 
@@ -118,7 +118,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 // etc.) — but a manual check should always tell the user something happened.
                 Debug.Log($"[NativeSocial] Update check failed: {e.Message}");
                 if (force)
-                    EditorUtility.DisplayDialog(PackageDisplayName, $"Falha ao verificar atualizações:\n{e.Message}", "OK");
+                    EditorUtility.DisplayDialog(PackageDisplayName, $"Failed to check for updates:\n{e.Message}", "OK");
             }
         }
 
