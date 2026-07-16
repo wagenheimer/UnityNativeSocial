@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-07-16
+- f5e4b87 chore: translate UI, docs and comments to English
+- c39d41f chore: bump version to v1.1.1
+
 ## [1.1.1] - 2026-07-09
 - 2524ad9 fix: add missing .meta for Editor/ and Runtime/ folders
 - 1c346fc chore: bump version to v1.1.0
