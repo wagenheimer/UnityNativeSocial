@@ -33,6 +33,7 @@ namespace Wagenheimer.NativeSocial
         private static Dictionary<string, string> _iosMap;
         private static Dictionary<string, SteamEntry> _steamMap;
         private static bool _initialized;
+        private static bool _warnedBeforeInitialize;
 
         /// <summary>
         /// Register achievement ID maps per platform.
@@ -93,7 +94,14 @@ namespace Wagenheimer.NativeSocial
         {
             if (!_initialized)
             {
-                Debug.LogWarning("[NativeSocial] Report called before Initialize.");
+                // Log only once: if the caller forgets Initialize() at boot, a repeated
+                // failure on every Report call (one per achievement, per frame, etc.)
+                // becomes console spam without adding new information.
+                if (!_warnedBeforeInitialize)
+                {
+                    _warnedBeforeInitialize = true;
+                    Debug.LogWarning("[NativeSocial] Report called before Initialize.");
+                }
                 return;
             }
 
