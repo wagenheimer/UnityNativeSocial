@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-07-19
+- a452ad6 fix: avoid false Report-before-Initialize warnings and log spam
+- 03d763e chore: bump version to v1.1.3
+
 ## [1.1.3] - 2026-07-16
 - f5e4b87 chore: translate UI, docs and comments to English
 - c39d41f chore: bump version to v1.1.1
