@@ -1,18 +1,27 @@
-{
-  "name": "Wagenheimer.NativeSocial",
-  "rootNamespace": "Wagenheimer.NativeSocial",
-  "references": [
-    "Google.Play.Games",
-    "com.rlabrecque.steamworks.net"
-  ],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "autoReferenced": true,
-  "versionDefines": [
-    {
-      "name": "com.rlabrecque.steamworks.net",
-      "expression": "",
-      "define": "WAGENHEIMER_NATIVESOCIAL_STEAM"
-    }
-  ]
+﻿{
+    "name":  "Wagenheimer.NativeSocial",
+    "rootNamespace":  "Wagenheimer.NativeSocial",
+    "references":  [
+                       "Google.Play.Games",
+                       "com.rlabrecque.steamworks.net"
+                   ],
+    "includePlatforms":  [
+
+                         ],
+    "excludePlatforms":  [
+
+                         ],
+    "autoReferenced":  true,
+    "versionDefines":  [
+                           {
+                               "name":  "com.rlabrecque.steamworks.net",
+                               "expression":  "",
+                               "define":  "WAGENHEIMER_NATIVESOCIAL_STEAM"
+                           },
+                           {
+                               "name":  "com.google.play.games",
+                               "expression":  "",
+                               "define":  "WAGENHEIMER_NATIVESOCIAL_GPGS"
+                           }
+                       ]
 }
