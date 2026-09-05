@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-05
+- 9b8b256 fix: declare missing _iosLeaderboardMap field
+- 351295e chore: bump version to v1.2.1
+
 ## [1.2.1] - 2026-09-05
 - 06a9259 fix: expose WAGENHEIMER_NATIVESOCIAL_GPGS version define for com.google.play.games
 - 096029e chore: bump version to v1.2.0
