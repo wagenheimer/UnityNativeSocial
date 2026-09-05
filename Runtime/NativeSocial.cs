@@ -32,6 +32,7 @@ namespace Wagenheimer.NativeSocial
         private static Dictionary<string, string> _androidMap;
         private static Dictionary<string, string> _iosMap;
         private static Dictionary<string, SteamEntry> _steamMap;
+        private static Dictionary<string, string> _androidLeaderboardMap;
         private static bool _initialized;
         private static bool _warnedBeforeInitialize;
 
@@ -42,14 +43,20 @@ namespace Wagenheimer.NativeSocial
         /// <param name="androidMap">Maps game-defined LocID -> Google Play Games achievement ID (e.g. "CgkI_aXR36YSEAIQAQ"). Pass null if not targeting Android.</param>
         /// <param name="iosMap">Maps game-defined LocID -> Game Center achievement ID (e.g. "com.example.wildcards"). Pass null if not targeting iOS.</param>
         /// <param name="steamMap">Maps game-defined LocID -> <see cref="SteamEntry"/> (Steam stat + achievement API names). Pass null if not targeting Steam.</param>
+        /// <param name="androidLeaderboardMap">Maps game-defined LocID -> Google Play Games leaderboard ID. Only used on Android for <see cref="SubmitScore"/>/<see cref="ShowLeaderboardUI(string)"/>.</param>
+        /// <param name="iosLeaderboardMap">Maps game-defined LocID -> Game Center leaderboard ID. Only used on iOS for <see cref="SubmitScore"/>/<see cref="ShowLeaderboardUI(string)"/>.</param>
         public static void Initialize(
             Dictionary<string, string> androidMap = null,
             Dictionary<string, string> iosMap = null,
-            Dictionary<string, SteamEntry> steamMap = null)
+            Dictionary<string, SteamEntry> steamMap = null,
+            Dictionary<string, string> androidLeaderboardMap = null,
+            Dictionary<string, string> iosLeaderboardMap = null)
         {
             _androidMap = androidMap ?? new Dictionary<string, string>();
             _iosMap = iosMap ?? new Dictionary<string, string>();
             _steamMap = steamMap ?? new Dictionary<string, SteamEntry>();
+            _androidLeaderboardMap = androidLeaderboardMap ?? new Dictionary<string, string>();
+            _iosLeaderboardMap = iosLeaderboardMap ?? new Dictionary<string, string>();
             _initialized = true;
         }
 
@@ -317,13 +324,66 @@ namespace Wagenheimer.NativeSocial
 #endif
         }
 
+        // ── Leaderboards ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Submits a score to the mapped platform leaderboard (Google Play Games on Android,
+        /// Game Center on iOS). Silent no-op when not authenticated or the locId has no mapping.
+        /// </summary>
+        public static void SubmitScore(string locId, long score)
+        {
+            if (!_initialized || locId == null) return;
+
+#if UNITY_ANDROID
+            if (IsAuthenticated && _androidLeaderboardMap.TryGetValue(locId, out var androidId))
+                PlayGamesPlatform.Instance.ReportScore(score, androidId, _ => { });
+#elif UNITY_IOS
+            if (_iosLeaderboardMap.TryGetValue(locId, out var iosId))
+                Social.ReportScore(score, iosId, _ => { });
+#endif
+        }
+
+        /// <summary>
+        /// Opens the platform-native leaderboard screen (Google Play Games on Android, Game Center
+        /// on iOS). Pass null to open the all-leaderboards screen on Android.
+        /// </summary>
+        /// <returns>True if a native UI was shown; false when there is no UI for the current platform/state.</returns>
+        public static bool ShowLeaderboardUI(string locId = null)
+        {
+#if UNITY_ANDROID
+            if (!IsAuthenticated) return false;
+            if (locId == null)
+            {
+                PlayGamesPlatform.Instance.ShowLeaderboardUI();
+                return true;
+            }
+            if (_androidLeaderboardMap.TryGetValue(locId, out var androidId))
+            {
+                PlayGamesPlatform.Instance.ShowLeaderboardUI(androidId);
+                return true;
+            }
+            return false;
+#elif UNITY_IOS
+            if (locId != null && _iosLeaderboardMap.TryGetValue(locId, out var iosId))
+            {
+                GameCenterPlatform.ShowLeaderboardUI(iosId, UnityEngine.SocialPlatforms.TimeScope.AllTime, _ => { });
+                return true;
+            }
+            return false;
+#else
+            return false;
+#endif
+        }
+
         // ── Authentication ────────────────────────────────────────────
 
         /// <summary>
-        /// Authenticates with Game Center on iOS. No-op (always reports failure) on other platforms,
-        /// since Android uses GPGS's own sign-in flow and Steam authenticates automatically via SteamAPI.Init().
+        /// Authenticates with Game Center on iOS, or Google Play Games on Android.
+        /// On Android, this returns the result of the plugin's automatic sign-in attempt
+        /// (Play Games Services v11+ tries to sign in automatically when the app starts).
+        /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
         /// </summary>
-        /// <param name="callback">Invoked with true on successful Game Center authentication, false on failure or on any non-iOS platform.</param>
+        /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS
@@ -332,8 +392,56 @@ namespace Wagenheimer.NativeSocial
             // no direct Authenticate method. This is an intentional, unavoidable use of the deprecated
             // API surface, not leftover code to "clean up"; removing it would break iOS auth entirely.
             Social.localUser.Authenticate(success => callback?.Invoke(success));
+#elif UNITY_ANDROID
+            PlayGamesPlatform.Instance.Authenticate(status =>
+            {
+                var success = status == SignInStatus.Success;
+                if (success) IsAuthenticated = true;
+                callback?.Invoke(success);
+            });
 #else
             callback?.Invoke(false);
+#endif
+        }
+
+        /// <summary>
+        /// (Android) Manually requests sign-in with Play Games Services, showing the profile-creation
+        /// UI when the player has no Play Games Services profile yet. Use this as the retry path when
+        /// <see cref="Authenticate"/> fails — GPGS v2 no longer triggers sign-in UI from the automatic
+        /// attempt alone. Requires GPGS plugin v11+.
+        /// </summary>
+        public static void AuthenticateManually(Action<bool> callback)
+        {
+#if UNITY_ANDROID
+            PlayGamesPlatform.Instance.ManuallyAuthenticate(status =>
+            {
+                var success = status == SignInStatus.Success;
+                if (success) IsAuthenticated = true;
+                callback?.Invoke(success);
+            });
+#else
+            callback?.Invoke(false);
+#endif
+        }
+
+        /// <summary>
+        /// (Android) Requests a server auth code (OAuth 2.0 authorization code) for the signed-in
+        /// player, for use with server-side sign-in — e.g. Unity Authentication's
+        /// <c>LinkWithGooglePlayGamesAsync(serverAuthCode)</c>. Requires GPGS plugin v2+.
+        /// Returns null through the callback when not authenticated.
+        /// </summary>
+        public static void GetServerAuthCode(Action<string> callback, bool forceRefreshToken = false)
+        {
+#if UNITY_ANDROID
+            if (!IsAuthenticated)
+            {
+                callback?.Invoke(null);
+                return;
+            }
+
+            PlayGamesPlatform.Instance.RequestServerSideAccess(forceRefreshToken, code => callback?.Invoke(code));
+#else
+            callback?.Invoke(null);
 #endif
         }
     }
