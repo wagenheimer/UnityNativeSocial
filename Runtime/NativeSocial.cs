@@ -33,6 +33,7 @@ namespace Wagenheimer.NativeSocial
         private static Dictionary<string, string> _iosMap;
         private static Dictionary<string, SteamEntry> _steamMap;
         private static Dictionary<string, string> _androidLeaderboardMap;
+        private static Dictionary<string, string> _iosLeaderboardMap;
         private static bool _initialized;
         private static bool _warnedBeforeInitialize;
 
