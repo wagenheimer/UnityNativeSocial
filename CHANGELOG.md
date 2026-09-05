@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-05
+- 979b1c9 feat: Android GPGS authentication (auto + manual), server auth code and leaderboards
+- 8b7b5f7 chore: bump version to v1.1.4
+
 ## [1.1.4] - 2026-07-19
 - a452ad6 fix: avoid false Report-before-Initialize warnings and log spam
 - 03d763e chore: bump version to v1.1.3
