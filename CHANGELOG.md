@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-05
+- 06a9259 fix: expose WAGENHEIMER_NATIVESOCIAL_GPGS version define for com.google.play.games
+- 096029e chore: bump version to v1.2.0
+
 ## [1.2.0] - 2026-09-05
 - 979b1c9 feat: Android GPGS authentication (auto + manual), server auth code and leaderboards
 - 8b7b5f7 chore: bump version to v1.1.4
