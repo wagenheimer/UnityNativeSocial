@@ -158,12 +158,12 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             var btn = new Button(() => SelectTab(tab)) { text = title };
             btn.AddToClassList("ns-tab-btn");
-            btn.style.backgroundColor = Color.transparent;
+            btn.style.backgroundColor = Color.clear;
             btn.style.borderLeftWidth = 0;
             btn.style.borderRightWidth = 0;
             btn.style.borderTopWidth = 0;
             btn.style.borderBottomWidth = 2;
-            btn.style.borderBottomColor = Color.transparent;
+            btn.style.borderBottomColor = Color.clear;
             btn.SetPadding(16, 8);
             btn.style.marginRight = 4;
             btn.style.color = NativeSocialUIStyle.ColorTextMuted;
@@ -189,8 +189,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 else
                 {
                     kv.Value.RemoveFromClassList("ns-tab-btn-active");
-                    kv.Value.style.backgroundColor = Color.transparent;
-                    kv.Value.style.borderBottomColor = Color.transparent;
+                    kv.Value.style.backgroundColor = Color.clear;
+                    kv.Value.style.borderBottomColor = Color.clear;
                     kv.Value.style.color = NativeSocialUIStyle.ColorTextMuted;
                 }
             }
@@ -635,7 +635,7 @@ NativeSocial.SyncCompleted(completedLocIds);";
             _tabContent.Add(aboutCard);
 
             var hubCard = CreateCard("Ecosystem Integration", "Manage and update all Wagenheimer tools from a unified dashboard.");
-            var hubBtn = new Button(() => PackageHubWindow.Open())
+            var hubBtn = new Button(PackageHubWindow.ShowWindow)
             { text = "Open Wagenheimer Package Hub" };
             hubBtn.AddToClassList("ns-btn-primary");
             hubBtn.style.marginTop = 6;
