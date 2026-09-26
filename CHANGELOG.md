@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-26
+- feat: UI Toolkit Dashboard (`Tools/Wagenheimer/Native Social/Dashboard...`, priority = 0) with comprehensive Checker and Helper:
+  - **Overview**: System platform summary, detected SDKs, architecture highlights.
+  - **Checker & Audit**: Platform diagnostics for Android GPGS, iOS Game Center, and Steamworks.NET with 1-click scripting define switcher.
+  - **Helper & Live Tester**: Interactive test runner for Authenticate, Report progress, Submit leaderboard score, and platform UI invocations.
+  - **Guides & Snippets**: Ready-to-copy code snippets with 1-click clipboard actions.
+  - **About**: Ecosystem directory and author bio.
+- feat: Fail-safe dual styling (inline flex layouts + `NativeSocialCommon.uss`).
+- chore: Reorganize menu priorities with Dashboard as the primary option.
+
 ## [1.2.3] - 2026-09-18
 - feat: migrate to centralized UnityPackageHub (`com.wagenheimer.packagehub`)
 
