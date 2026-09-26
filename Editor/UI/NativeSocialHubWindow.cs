@@ -382,9 +382,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 bootBtnRow.Add(createScriptBtn);
             }
 
-            var addToSceneBtn = new Button(AddBootstrapToCurrentScene) { text = "Add Bootstrap to Current Scene" };
+            var addToSceneBtn = new Button(AddBootstrapToCurrentScene) { text = "Add Bootstrap to Scene" };
             addToSceneBtn.AddToClassList("ns-btn-secondary");
+            addToSceneBtn.style.marginRight = 8;
             bootBtnRow.Add(addToSceneBtn);
+
+            var addDebugBtn = new Button(NativeSocialDebugOverlayEditor.AddDebugOverlayToScene) { text = "Add In-Game Debug Overlay to Scene" };
+            addDebugBtn.AddToClassList("ns-btn-primary");
+            bootBtnRow.Add(addDebugBtn);
 
             bootstrapCard.Add(bootBtnRow);
             _tabContent.Add(bootstrapCard);
