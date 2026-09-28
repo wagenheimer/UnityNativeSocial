@@ -214,3 +214,150 @@
     font-size: 11px;
     white-space: normal;
 }
+
+/* Dashboard header banner (NativeSocialDashboardWindow) */
+.ns-header {
+    background-color: #17202f;
+    border-bottom-width: 2px;
+    border-bottom-color: #0284c7;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+.ns-header-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ns-header-left {
+    flex-direction: row;
+    align-items: center;
+}
+
+.ns-header-title {
+    font-size: 16px;
+    -unity-font-style: bold;
+    color: #ffffff;
+    margin-right: 8px;
+}
+
+.ns-header-version {
+    background-color: rgba(2, 132, 199, 0.2);
+    border-color: #0284c7;
+    border-width: 1px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    font-size: 10px;
+    -unity-font-style: bold;
+    color: #38bdf8;
+}
+
+.ns-header-subtitle {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+.ns-toolbar-actions {
+    flex-direction: row;
+    align-items: center;
+}
+
+/* Tab row (Dashboard, distinct from the legacy ns-tab-bar) */
+.ns-tab-row {
+    flex-direction: row;
+    margin-bottom: 10px;
+    border-bottom-width: 1px;
+    border-bottom-color: #263852;
+}
+
+.ns-tab-row .ns-tab-btn {
+    flex-grow: 1;
+    -unity-text-align: middle-center;
+}
+
+/* Callout box */
+.ns-callout {
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    margin-top: 6px;
+    margin-bottom: 8px;
+    border-left-width: 4px;
+    font-size: 11px;
+}
+
+.ns-callout-info {
+    background-color: rgba(2, 132, 199, 0.12);
+    border-left-color: #0284c7;
+    color: #dbeafe;
+}
+
+.ns-callout-warn {
+    background-color: rgba(252, 211, 77, 0.12);
+    border-left-color: #fcd34d;
+    color: #fff2d6;
+}
+
+.ns-callout-pass {
+    background-color: rgba(110, 231, 183, 0.12);
+    border-left-color: #6ee7b7;
+    color: #dffff0;
+}
+
+/* Checklist item */
+.ns-checklist-item {
+    background-color: #16202e;
+    border-width: 1px;
+    border-color: #283950;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.ns-checklist-item.checked {
+    border-color: rgba(110, 231, 183, 0.4);
+    background-color: rgba(110, 231, 183, 0.06);
+}
+
+.ns-checklist-text {
+    flex-grow: 1;
+    margin-left: 8px;
+}
+
+.ns-checklist-title {
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: #ffffff;
+}
+
+.ns-checklist-desc {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+}

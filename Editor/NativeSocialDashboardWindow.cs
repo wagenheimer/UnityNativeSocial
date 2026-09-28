@@ -1,0 +1,163 @@
+using System;
+
+using UnityEditor;
+
+using UnityEngine;
+using UnityEngine.UIElements;
+
+using Wagenheimer.NativeSocial.Editor.UI;
+
+namespace Wagenheimer.NativeSocial.Editor
+{
+    /// <summary>
+    /// Unified dashboard for Native Social: setup audit with one-click fixes, achievement-mapping overview,
+    /// a live Play Mode tester, a persistent release checklist, and docs/updates. Built with UI Toolkit like
+    /// the sibling packages (RewiredHelper, IAPHelper).
+    /// </summary>
+    public class NativeSocialDashboardWindow : EditorWindow
+    {
+        public enum Tab
+        {
+            SetupAudit,
+            Achievements,
+            LiveTester,
+            Checklist,
+            DocsAndUpdates
+        }
+
+        private Tab _currentTab = Tab.SetupAudit;
+        private VisualElement _root;
+        private ScrollView _contentContainer;
+
+        [MenuItem("Tools/Wagenheimer/Native Social/Dashboard...", priority = 0)]
+        public static void OpenDashboard() => Open(Tab.SetupAudit);
+
+        public static void OpenAuditTab() => Open(Tab.SetupAudit);
+
+        public static void Open(Tab tab)
+        {
+            var window = GetWindow<NativeSocialDashboardWindow>("Native Social");
+            window.minSize = new Vector2(760, 520);
+            window.titleContent = new GUIContent("Native Social", EditorGUIUtility.IconContent("d_SocialNetworks").image);
+            window._currentTab = tab;
+            window.Show();
+            if (window._root != null) window.RebuildUI();
+        }
+
+        public void CreateGUI()
+        {
+            _root = rootVisualElement;
+            _root.style.flexGrow = 1;
+            NativeSocialUIStyle.Apply(_root);
+            RebuildUI();
+        }
+
+        private void RebuildUI()
+        {
+            _root.Clear();
+            _root.Add(CreateHeaderBanner());
+            _root.Add(CreateTabBar());
+
+            _contentContainer = new ScrollView(ScrollViewMode.Vertical) { style = { flexGrow = 1 } };
+            _root.Add(_contentContainer);
+
+            RebuildContent();
+        }
+
+        private VisualElement CreateHeaderBanner()
+        {
+            var banner = new VisualElement();
+            banner.AddToClassList("ns-header");
+
+            var row = new VisualElement();
+            row.AddToClassList("ns-header-row");
+
+            var left = new VisualElement();
+            left.AddToClassList("ns-header-left");
+            left.Add(new Label("🌐") { style = { fontSize = 20, marginRight = 8 } });
+
+            var title = new Label("Native Social");
+            title.AddToClassList("ns-header-title");
+            left.Add(title);
+
+            var versionBadge = new Label("v" + GetPackageVersion());
+            versionBadge.AddToClassList("ns-header-version");
+            left.Add(versionBadge);
+            row.Add(left);
+
+            var toolbar = new VisualElement();
+            toolbar.AddToClassList("ns-toolbar-actions");
+            toolbar.Add(NativeSocialUIStyle.CreateButton("🔄 Updates", () => UpdateChecker.CheckForUpdate(force: true)));
+            row.Add(toolbar);
+            banner.Add(row);
+
+            var subtitle = new Label("Unified Android/iOS/Steam achievements, leaderboards and auth on top of native platform SDKs.");
+            subtitle.AddToClassList("ns-header-subtitle");
+            banner.Add(subtitle);
+
+            return banner;
+        }
+
+        private VisualElement CreateTabBar()
+        {
+            var bar = new VisualElement();
+            bar.AddToClassList("ns-tab-row");
+
+            (Tab tab, string icon, string title)[] tabs =
+            {
+                (Tab.SetupAudit, "🔍", "Setup Audit"),
+                (Tab.Achievements, "🏆", "Achievements"),
+                (Tab.LiveTester, "🧪", "Live Tester"),
+                (Tab.Checklist, "📋", "Checklist"),
+                (Tab.DocsAndUpdates, "📚", "Docs & Updates")
+            };
+
+            foreach (var (tab, icon, title) in tabs)
+            {
+                var tabValue = tab;
+                var button = new Button(() =>
+                {
+                    _currentTab = tabValue;
+                    RebuildUI();
+                })
+                { text = $"{icon} {title}" };
+
+                button.AddToClassList("ns-tab-btn");
+                if (_currentTab == tab) button.AddToClassList("ns-tab-btn-active");
+                bar.Add(button);
+            }
+
+            return bar;
+        }
+
+        private void RebuildContent()
+        {
+            _contentContainer.Clear();
+
+            VisualElement view = _currentTab switch
+            {
+                Tab.SetupAudit => new NativeSocialAuditView().Root,
+                Tab.Achievements => new NativeSocialAchievementsView().Root,
+                Tab.LiveTester => new NativeSocialHelperView().Root,
+                Tab.Checklist => new NativeSocialChecklistView().Root,
+                _ => new NativeSocialDocsView().Root
+            };
+            _contentContainer.Add(view);
+        }
+
+        internal static string GetPackageVersion()
+        {
+            try
+            {
+                var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(NativeSocialDashboardWindow).Assembly);
+                if (package != null && !string.IsNullOrEmpty(package.version))
+                    return package.version;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[NativeSocial] Could not read package version: {ex.Message}");
+            }
+            return "?";
+        }
+    }
+}
