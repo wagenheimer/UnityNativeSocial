@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
+using Wagenheimer.NativeSocial.Editor;
+
 namespace Wagenheimer.NativeSocial.Editor.UI
 {
     /// <summary>Shows every <see cref="AchievementTierMap"/> asset found in the project and its per-platform completeness.</summary>
@@ -77,13 +79,23 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                     total == 0 ? "no entries" : $"{steamEntries} / {total} filled in",
                     NativeSocialUIStyle.ColorTextMuted));
 
+                var btnRow2 = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 8 } };
+
                 var selectBtn = NativeSocialUIStyle.CreateButton("Select Asset", () =>
                 {
                     Selection.activeObject = map;
                     EditorGUIUtility.PingObject(map);
                 });
-                selectBtn.style.marginTop = 8;
-                card.Add(selectBtn);
+                btnRow2.Add(selectBtn);
+
+                var exportBtn = NativeSocialUIStyle.CreateButton("⬆ Export for AppDeployHub", () =>
+                    AchievementExchangeExporter.ExportToFile(map, PlayerSettings.productName), primary: true);
+                exportBtn.style.marginLeft = 8;
+                exportBtn.tooltip = "Writes a JSON file (appdeployhub-achievements/v1) with one entry per trophy tier, " +
+                    "ready to upload in AppDeployHub's Achievements > Import from Unity.";
+                btnRow2.Add(exportBtn);
+
+                card.Add(btnRow2);
 
                 _listContainer.Add(card);
             }

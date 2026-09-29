@@ -26,6 +26,11 @@ namespace Wagenheimer.NativeSocial.Editor
         public string Detail;
         public string FixHint;
 
+        /// <summary>Plain-language explanation of what this check is, why it exists and how it behaves —
+        /// shown under the title so a developer unfamiliar with platform SDKs understands the finding
+        /// without needing to read source code.</summary>
+        public string WhatIsThis;
+
         /// <summary>Ready-to-paste task for an AI coding agent. Empty for Pass results.</summary>
         public string Prompt;
 
@@ -81,12 +86,16 @@ namespace Wagenheimer.NativeSocial.Editor
                 "Google Play Games plugin not detected: Android achievements/leaderboards will silently no-op.",
                 "Install the official Google Play Games Plugin for Unity (v2, GDK-based).", "Get the plugin",
                 () => Application.OpenURL("https://github.com/playgameservices/play-games-plugin-for-unity"),
-                AuditSeverity.Info);
+                AuditSeverity.Info,
+                whatIsThis: "This is Google's own SDK that lets your game report achievements/leaderboards to Google Play on Android. " +
+                            "NativeSocial talks to it automatically once it's installed — nothing to code.");
 
             bool isIos = EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS;
             Add(results, CategoryPlatforms, "Game Center (iOS)", isIos || true,
                 isIos ? "Active build target is iOS." : "Game Center is built into Unity/iOS; switches automatically when the build target is iOS.",
-                null, null, failSeverity: AuditSeverity.Info);
+                null, null, failSeverity: AuditSeverity.Info,
+                whatIsThis: "Apple's Game Center needs no separate plugin — it's part of Unity's iOS support. " +
+                            "This just confirms it's available; it only actually activates when you build for iOS.");
 
             bool steamFound = IsTypeAvailable("Steamworks.SteamUserStats");
             bool steamDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_STEAM");
@@ -94,7 +103,14 @@ namespace Wagenheimer.NativeSocial.Editor
                 steamFound ? "Steamworks.NET detected and WAGENHEIMER_NATIVESOCIAL_STEAM is active." : "Steamworks.NET not installed (only needed for Steam builds).",
                 "Steamworks.NET is installed but WAGENHEIMER_NATIVESOCIAL_STEAM is not defined: Steam achievement calls will compile out.",
                 "Add the define to the active build target's Scripting Define Symbols.", "Add Define",
-                () => SetDefine("WAGENHEIMER_NATIVESOCIAL_STEAM", true), AuditSeverity.Warning);
+                () => SetDefine("WAGENHEIMER_NATIVESOCIAL_STEAM", true), AuditSeverity.Warning,
+                whatIsThis: "WAGENHEIMER_NATIVESOCIAL_STEAM is a compiler switch: without it, every Steam achievement/stat call in " +
+                            "NativeSocial compiles to nothing (not even a runtime check — the code simply isn't there). This audit only " +
+                            "checks the *current Editor session's* Player Settings, which is why the 'Add Define' button only fixes local " +
+                            "testing. If you build through UnityBuildPipeline, the real, permanent fix is adding this define to your Steam " +
+                            "PublisherProfile asset's 'Scripting Defines' list — the pipeline applies it automatically for every Steam build " +
+                            "and reverts it afterwards, so this warning will keep showing here in the Editor even after you've set that up " +
+                            "correctly. That's expected: this check can't see build-time-only defines, only what's active right now.");
 
             bool gpgsDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_GPGS");
             if (gpgsFound)
@@ -102,7 +118,13 @@ namespace Wagenheimer.NativeSocial.Editor
                 Add(results, CategoryPlatforms, "GPGS scripting define active", gpgsDefine,
                     "WAGENHEIMER_NATIVESOCIAL_GPGS is active (auto-set by the com.google.play.games version define).",
                     "Google Play Games plugin found but WAGENHEIMER_NATIVESOCIAL_GPGS is not defined — verify it's installed as a package (not loose Assets/ files), since versionDefines only fires for a resolvable package version.",
-                    failSeverity: AuditSeverity.Warning);
+                    failSeverity: AuditSeverity.Warning,
+                    whatIsThis: "Same idea as the Steam define above, but this one is normally set FOR you: Unity's Package Manager has a " +
+                                "feature called 'Version Defines' that auto-adds WAGENHEIMER_NATIVESOCIAL_GPGS the moment it sees the Google " +
+                                "Play Games package installed correctly. If this shows a warning, it means Unity couldn't detect it as a proper " +
+                                "package — usually because the plugin was dropped as loose files under Assets/ instead of imported via the " +
+                                "Package Manager/git URL. No manual action needed if you're not shipping Android achievements yet; if you are, " +
+                                "reinstall the plugin the recommended way (UPM) and this clears itself on the next recompile.");
             }
         }
 
@@ -117,7 +139,12 @@ namespace Wagenheimer.NativeSocial.Editor
                 "NativeSocialBootstrap found in project assets.",
                 "No bootstrap script found: NativeSocial.Initialize(...) must be called once at startup, or every Report/SubmitScore call silently no-ops.",
                 "Creates a starter NativeSocialBootstrap.cs from the package sample.", "Generate NativeSocialBootstrap.cs",
-                CreateBootstrapScriptAsset, AuditSeverity.Warning);
+                CreateBootstrapScriptAsset, AuditSeverity.Warning,
+                whatIsThis: "NativeSocial needs one line, NativeSocial.Initialize(...), called once before any achievement/leaderboard call, " +
+                            "so it knows your game's LocID → platform-ID mappings. 'Generate' only creates the .cs FILE under " +
+                            "Assets/Scripts/Social — it does NOT place it in any scene by itself. After generating, use the 'Add Bootstrap " +
+                            "to Scene' button below (in your project's bootstrap/splash scene, so it runs before anything else) to actually " +
+                            "create the GameObject with this component attached. Do that in whichever scene loads first at app startup.");
         }
 
         internal static void CreateBootstrapScriptAsset()
@@ -160,11 +187,32 @@ public class NativeSocialBootstrap : MonoBehaviour
 
         internal static void AddBootstrapToCurrentScene()
         {
+            var type = FindBootstrapType();
+            if (type == null)
+            {
+                bool created = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length == 0;
+                if (created) CreateBootstrapScriptAsset();
+
+                var message = created
+                    ? "NativeSocialBootstrap.cs was just generated and Unity needs to recompile before it can be attached to a GameObject. Click 'Add Bootstrap to Scene' again in a few seconds, once compiling finishes."
+                    : "NativeSocialBootstrap.cs exists but isn't compiled yet (still compiling, or it has a compile error — check the Console). Try again once Unity finishes compiling.";
+                EditorUtility.DisplayDialog("Not ready yet", message, "OK");
+                Debug.LogWarning("[NativeSocial] " + message);
+                return;
+            }
+
             var go = new GameObject("NativeSocialBootstrap");
             Undo.RegisterCreatedObjectUndo(go, "Create NativeSocialBootstrap");
+            go.AddComponent(type);
             Selection.activeGameObject = go;
-            Debug.Log("[NativeSocial] Created 'NativeSocialBootstrap' GameObject in active scene.");
+            Debug.Log("[NativeSocial] Created 'NativeSocialBootstrap' GameObject with the NativeSocialBootstrap component attached, in the active scene. " +
+                      "Remember: this only takes effect in scenes where it actually runs (e.g. your bootstrap/splash scene) — add it to every scene that can be an entry point, or make sure your bootstrap scene always loads first.");
         }
+
+        private static Type FindBootstrapType() =>
+            AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => { try { return a.GetTypes(); } catch { return Array.Empty<Type>(); } })
+                .FirstOrDefault(t => t.Name == "NativeSocialBootstrap" && typeof(MonoBehaviour).IsAssignableFrom(t));
 
         #endregion
 
@@ -178,7 +226,10 @@ public class NativeSocialBootstrap : MonoBehaviour
                 Add(results, CategoryAchievements, "Achievement Tier Map asset", false,
                     null, "No AchievementTierMap asset found: there is nowhere to keep this game's per-platform achievement IDs.",
                     "Creates an empty AchievementTierMap asset under Assets/.", "Create Achievement Tier Map",
-                    CreateAchievementTierMapAsset, AuditSeverity.Warning);
+                    CreateAchievementTierMapAsset, AuditSeverity.Warning,
+                    whatIsThis: "An AchievementTierMap is a single asset that lists every trophy your game has, with one row per trophy " +
+                                "holding its Google Play achievement ID, its Apple Game Center ID, and (for Steam) its stat/achievement API " +
+                                "name. The bootstrap script reads this asset and builds the dictionaries NativeSocial.Initialize needs.");
                 return;
             }
 
@@ -205,13 +256,18 @@ public class NativeSocialBootstrap : MonoBehaviour
                     missingGoogle == 0 ? AuditSeverity.Pass : (gpgsFound ? AuditSeverity.Warning : AuditSeverity.Info),
                     missingGoogle == 0
                         ? $"All {total} entries have a Google Play achievement ID."
-                        : $"{missingGoogle} of {total} entries have no Google Play achievement ID yet (create the achievements in Google Play Console, then paste the IDs in)."));
+                        : $"{missingGoogle} of {total} entries have no Google Play achievement ID yet (create the achievements in Google Play Console, then paste the IDs in).",
+                    whatIsThis: "Each achievement must first be created in Google Play Console (Play Console → your app → Grow → Achievements), " +
+                                "which gives you a long alphanumeric ID per achievement. Paste that ID into this map's matching row. Until " +
+                                "it's filled in, that trophy's unlock call on Android is skipped (no crash, just silently ignored)."));
 
                 results.Add(Result(CategoryAchievements, $"'{path}': Apple Game Center IDs",
                     missingApple == 0 ? AuditSeverity.Pass : AuditSeverity.Info,
                     missingApple == 0
                         ? $"All {total} entries have an Apple Game Center ID."
-                        : $"{missingApple} of {total} entries have no Apple Game Center ID yet (create the achievements in App Store Connect, then paste the IDs in)."));
+                        : $"{missingApple} of {total} entries have no Apple Game Center ID yet (create the achievements in App Store Connect, then paste the IDs in).",
+                    whatIsThis: "Same idea as Google Play IDs, but created in App Store Connect (Features → Game Center → Achievements) instead. " +
+                                "Marked Info rather than Warning because iOS/Game Center support is usually finished later in a project's life."));
             }
         }
 
@@ -240,9 +296,10 @@ public class NativeSocialBootstrap : MonoBehaviour
         #region Helpers
 
         private static void Add(List<AuditResult> results, string category, string title, bool pass, string passDetail,
-            string failDetail, string hint = null, string fixLabel = null, Action fix = null, AuditSeverity failSeverity = AuditSeverity.Fail)
+            string failDetail, string hint = null, string fixLabel = null, Action fix = null, AuditSeverity failSeverity = AuditSeverity.Fail,
+            string whatIsThis = null)
         {
-            var result = Result(category, title, pass ? AuditSeverity.Pass : failSeverity, pass ? passDetail : failDetail);
+            var result = Result(category, title, pass ? AuditSeverity.Pass : failSeverity, pass ? passDetail : failDetail, whatIsThis);
             if (!pass)
             {
                 result.FixHint = hint;
@@ -252,8 +309,8 @@ public class NativeSocialBootstrap : MonoBehaviour
             results.Add(result);
         }
 
-        private static AuditResult Result(string category, string title, AuditSeverity severity, string detail) =>
-            new AuditResult { Category = category, Title = title, Severity = severity, Detail = detail };
+        private static AuditResult Result(string category, string title, AuditSeverity severity, string detail, string whatIsThis = null) =>
+            new AuditResult { Category = category, Title = title, Severity = severity, Detail = detail, WhatIsThis = whatIsThis };
 
         internal static bool IsTypeAvailable(string typeFullName) =>
             AppDomain.CurrentDomain.GetAssemblies()

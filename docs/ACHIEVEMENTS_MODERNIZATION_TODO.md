@@ -106,17 +106,20 @@ that first for the *why*. This file is the concrete *what's left*.
    `.github/workflows/bump-version.yml` on push using Conventional Commits — do **not** hand-edit the version
    number, same rule as every other Wagenheimer package touched this session).
 
-3. **Storm-Tale2 wiring (Part D of the plan, not started at all yet)**:
-   - Add `com.wagenheimer.nativesocial` to `Packages/manifest.json` (git URL, same style as
-     `com.wagenheimer.rewiredhelper`/`com.rlabrecque.steamworks.net` added earlier this session).
-   - Create Storm-Tale2's own `AchievementTierMap` asset (54 rows from `docs/ACHIEVEMENTS.md`, Google
-     Play/Apple columns left empty — see the plan's Part C, step 2).
-   - Extend `AchievementsSteam.cs`'s `Update()` sync loop with an Android/iOS branch that calls
-     `NativeSocial.Report(AchievementTierMap.LocId(trophyNumber, tier), ...)` per changed tier — **do not
-     touch the Steam path or any of the 18 existing `GetTrophySave`/`GetAchievementSave` call sites** (see
-     the plan's explicit "frozen" decision).
-   - Call `NativeSocial.Initialize(map.BuildAndroidMap(), map.BuildIosMap())` once from `Main.cs`'s `Awake()`,
-     next to the existing `RewiredInputManager.SetGlobalConfiguration(...)` call.
+3. ~~**Storm-Tale2 wiring (Part D of the plan)**~~ — **DONE.** `com.wagenheimer.nativesocial` (`v1.5.0`,
+   the tag `bump-version.yml` cut from this round's commit) is in `Packages/manifest.json`.
+   `Assets/Resources/Social/AchievementTierMap.asset` holds all 54 rows (Google Play/Apple columns
+   empty). `Main.cs`'s `Awake()` loads it via `Resources.Load` and calls `NativeSocial.Initialize`.
+   `AchievementsSteam.cs` gained an `#if UNITY_ANDROID || UNITY_IOS`-gated `SyncAchievementTiersToNativeSocial`
+   method (uses a hardcoded `TierThresholds` table, since there's no runtime TrophyConfig registry to query
+   by number) — the Steam path and all 18 original call sites are untouched. See Storm-Tale2's
+   `docs/ACHIEVEMENTS.md` → "Runtime wiring" for the exact detail. **Verification note:** unlike the rest of
+   this round, this was NOT re-checked with a standalone `dotnet build` (Storm-Tale2's `Main.cs`/
+   `AchievementsSteam.cs` pull in too many game-specific dependencies — I2 Localization, DarkTonic
+   MasterAudio, etc. — to stand up a harness cheaply); it was verified by manual brace-balance/diff review
+   and by directly cross-checking the exact `NativeSocial.Report`/`AchievementTierMap.LocId` signatures
+   against `Runtime/NativeSocial.cs`/`Runtime/AchievementTierMap.cs`. Confirm with a real Unity Editor
+   compile before shipping.
 
 ## Verification still needed once the above is done
 - Full `dotnet build` re-check of every new/changed NativeSocial file (same standalone-harness technique

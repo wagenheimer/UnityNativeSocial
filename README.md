@@ -117,6 +117,78 @@ Steam integration is enabled automatically — the package's asmdef defines
 `com.rlabrecque.steamworks.net` (Steamworks.NET) is present in your project.
 No manual Scripting Define Symbols setup is required.
 
+## Editor Dashboard
+
+`Tools > Wagenheimer > Native Social > Dashboard...` (or `Verify Setup...` to jump straight to the audit)
+opens a UI Toolkit dashboard with five tabs:
+
+- **Setup Audit** — automated checks for GPGS/Steamworks presence and scripting defines, bootstrap
+  script presence, and achievement-mapping completeness (see below), each with a one-click fix where
+  possible, plus "Copy Report" / "Copy AI Fix Prompt" buttons.
+- **Achievements** — lists every `AchievementTierMap` asset in the project, how many entries are
+  still missing a Google Play/Apple ID, and an **"⬆ Export for AppDeployHub"** button (see below).
+- **Live Tester** — exercises `Authenticate`/`Report`/`SubmitScore` against whichever platform SDK
+  is active, for quick manual testing in Play Mode.
+- **Checklist** — a persistent (per-machine, `EditorPrefs`-backed) release checklist covering Setup,
+  Google Play Console, App Store Connect, Steam and Release items.
+- **Docs & Updates** — the code snippets below, ready to copy, plus the update checker.
+
+## Achievement Tier Map (recommended integration)
+
+Hand-rolling per-platform `Dictionary<string,string>` maps in code works for a handful of
+achievements, but doesn't scale to a game with dozens of tiered trophies. `AchievementTierMap` is a
+reusable `ScriptableObject` (`Assets > Create > Wagenheimer > Native Social > Achievement Tier Map`)
+that holds one row per achievement tier:
+
+| Field | Used by | Purpose |
+|---|---|---|
+| `TrophyNumber`, `Tier` | `LocId(trophyNumber, tier)` | Together they form the canonical `"Trophy{N}_{tier}"` key shared by every map and by `NativeSocial.Report`/`SyncCompleted` call sites — **always build the key with this static method, never format the string by hand**, or the key used to report progress will silently stop matching the key used to build the maps. |
+| `SteamStat` | `BuildSteamMap()` | Steamworks stat name (e.g. `"Trophy4_2_Status"`), assumed to equal the achievement API name too — pass a custom map to `Initialize` instead if your Steam achievement names differ from your stat names. |
+| `GooglePlayId` | `BuildAndroidMap()` | Google Play Games achievement ID, from the Play Console (or auto-filled by AppDeployHub — see below). Leave empty until it exists: `NativeSocial.Report` no-ops for an unmapped LocId, so a partially-filled map is always safe to ship. |
+| `AppleId` | `BuildIosMap()` | Apple Game Center achievement ID, from App Store Connect (or auto-filled by AppDeployHub). Same empty-is-safe rule applies. |
+| `DisplayName`, `EarnedDescription`, `NotEarnedDescription`, `Points`, `IsHidden` | **Export only** — not read by `NativeSocial` itself | Player-facing text and store metadata, used solely by the "Export for AppDeployHub" button below to build a complete achievement definition (a bare LocId + platform ID isn't enough to *create* an achievement on a console, only to *report progress* to one that already exists). |
+
+```csharp
+[SerializeField] private AchievementTierMap achievementMap;
+
+void Awake()
+{
+    NativeSocial.Initialize(
+        achievementMap.BuildAndroidMap(),
+        achievementMap.BuildIosMap(),
+        achievementMap.BuildSteamMap());
+}
+
+// Report a tier by trophy number — no hand-formatted LocId strings:
+NativeSocial.Report(AchievementTierMap.LocId(trophyNumber: 4, tier: 2), delta: 1, current: 2, total: 3, completed: false);
+```
+
+### Exporting to AppDeployHub
+
+If you use [AppDeployHub](https://github.com/wagenheimer/AppDeployHub) (a self-hosted dashboard that
+publishes app metadata, In-App Purchases, and achievements to the real store APIs), the
+**"⬆ Export for AppDeployHub"** button on the Dashboard's Achievements tab writes a JSON file
+(`appdeployhub-achievements/v1` format — one object per `AchievementTierMap` entry, with the
+`DisplayName`/`EarnedDescription`/`NotEarnedDescription`/`Points`/`IsHidden`/`SteamStat`/`GooglePlayId`/`AppleId`
+fields above) that you upload in AppDeployHub's Achievements page ("Import from Unity"). From there,
+AppDeployHub can:
+
+- **Create the achievements on Google Play and Apple for you**, via their real publishing APIs
+  (Google's Games Configuration API and Apple's App Store Connect API both support programmatic
+  achievement creation — confirmed against their official docs; this is not scraping or UI
+  automation). You review/edit the imported rows first; nothing is pushed to either store until you
+  click "Push".
+- **Generate a ready-to-paste CSV for Steam**, since Steamworks has no public API for bulk-creating
+  achievements — that part stays manual on the Steamworks Partner Site.
+- Write the real Google Play/Apple achievement IDs it creates back into... well, not automatically
+  back into this Unity asset (there's no live connection) — copy them from AppDeployHub's UI into this
+  `AchievementTierMap`'s `GooglePlayId`/`AppleId` columns once created, the same way you would if you'd
+  created them by hand.
+
+The export format is intentionally simple, versioned JSON (see
+`Editor/AchievementExchangeExporter.cs`) — if you don't use AppDeployHub, it's still a reasonable
+starting point for writing your own importer against Google Play Console / App Store Connect.
+
 ## API
 
 ### `NativeSocial.Initialize(androidMap, iosMap, steamMap, androidLeaderboardMap, iosLeaderboardMap)`

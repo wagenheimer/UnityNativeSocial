@@ -28,6 +28,21 @@ namespace Wagenheimer.NativeSocial
 
         [Tooltip("Apple Game Center achievement ID for this tier (from App Store Connect), or empty until that console listing exists.")]
         public string AppleId;
+
+        [Tooltip("Player-facing display name for this tier (e.g. from your localization system). Only used by the \"Export for AppDeployHub\" button — not read by NativeSocial itself.")]
+        public string DisplayName;
+
+        [Tooltip("Player-facing description shown once the achievement is earned. Only used by the \"Export for AppDeployHub\" button.")]
+        public string EarnedDescription;
+
+        [Tooltip("Player-facing description shown before the achievement is earned (hint/goal text). Only used by the \"Export for AppDeployHub\" button.")]
+        public string NotEarnedDescription;
+
+        [Tooltip("Points awarded for this tier on Google Play / Apple Game Center. Only used by the \"Export for AppDeployHub\" button.")]
+        public int Points;
+
+        [Tooltip("Hidden until earned, on Google Play / Apple Game Center. Only used by the \"Export for AppDeployHub\" button.")]
+        public bool IsHidden;
     }
 
     /// <summary>

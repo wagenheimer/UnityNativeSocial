@@ -139,6 +139,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             var textCol = new VisualElement { style = { flexGrow = 1, flexShrink = 1, marginRight = 10 } };
             textCol.Add(CreateText(item.Title, 12, FontStyle.Bold, Color.clear));
+            if (!string.IsNullOrEmpty(item.WhatIsThis))
+                textCol.Add(CreateText("ℹ️ " + item.WhatIsThis, 10, FontStyle.Italic, new Color(0.62f, 0.66f, 0.72f)));
             if (!string.IsNullOrEmpty(item.Detail))
                 textCol.Add(CreateText(item.Detail, 10, FontStyle.Normal, NativeSocialUIStyle.ColorTextMuted));
             if (!string.IsNullOrEmpty(item.FixHint))
