@@ -32,7 +32,7 @@ jobs:
             echo "type=patch" >> $GITHUB_OUTPUT
           fi
 
-      - name: Bump version
+      - name: Determine next version (dry run — does not create the tag yet)
         id: version
         uses: anothrNick/github-tag-action@1.71.0
         env:
@@ -40,6 +40,7 @@ jobs:
           WITH_V: true
           DEFAULT_BUMP: ${{ steps.bump.outputs.type }}
           RELEASE_BRANCHES: master
+          DRY_RUN: true
 
       - name: Update package.json
         run: |
@@ -63,10 +64,12 @@ jobs:
 
           sed -i "/^## \[Unreleased\]/r /tmp/changelog_entry.txt" CHANGELOG.md
 
-      - name: Commit and push
+      - name: Commit, tag and push
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           git add package.json CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_tag }}"
+          git tag "${{ steps.version.outputs.new_tag }}"
           git push
+          git push origin "${{ steps.version.outputs.new_tag }}"
