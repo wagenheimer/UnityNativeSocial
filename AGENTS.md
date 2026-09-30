@@ -41,6 +41,15 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
 - `Editor/UI/AchievementMapEditorView.cs` — the card-per-trophy achievement editor, shared by the Dashboard's
   Achievements tab and `AchievementTierMapInspector` (custom Inspector). Don't fork it into two copies — the
   UnityBuildPipeline Publishers UI drifted exactly that way.
+- `Editor/AppDeployHubClient.cs` - `AppDeployHubSettings` (server URL + chosen app in
+  `ProjectSettings/NativeSocialAppDeployHub.json`; the API key ONLY in EditorPrefs / the `APPDEPLOYHUB_API_KEY`
+  env var - never write a secret into a project file) and `AppDeployHubClient` (HttpClient against AppDeployHub
+  `/api/v1`; results are delivered on the main thread by polling `EditorApplication.update`, never from a background
+  thread). `ValidateBaseUrl` refuses plain http except for localhost so the key never travels unencrypted. A push to
+  Google Play / Apple is opt-in per call and must stay opt-in: it creates real achievements on the store.
+  The wire format is AppDeployHub `appdeployhub-achievements/v1` plus the optional per-entry `localizations` list; the
+  AppDeployHub side lives in its `AchievementExchange` / `AchievementImportService` and must be kept in sync by hand.
+  `Editor/AssemblyInfo.cs` exposes internals to `Wagenheimer.NativeSocial.EditorTests`.
 - `Editor/NativeSocialDashboardWindow.cs` + `Editor/UI/*` — UI Toolkit dashboard (`ns-` USS prefix), same
   structure as `UnityRewiredHelper`'s: **Setup Audit**, **Achievements** (lists every `AchievementTierMap`
   asset, per-platform fill-in counts, Create New Map), **Live Tester** (`NativeSocialHelperView.cs` —

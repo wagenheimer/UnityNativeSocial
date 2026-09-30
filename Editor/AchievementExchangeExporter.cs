@@ -22,6 +22,15 @@ namespace Wagenheimer.NativeSocial.Editor
         private const string FormatId = "appdeployhub-achievements/v1";
 
         [Serializable]
+        internal class ExchangeLocalization
+        {
+            public string locale;
+            public string name;
+            public string earnedDescription;
+            public string notEarnedDescription;
+        }
+
+        [Serializable]
         internal class ExchangeEntry
         {
             public string key;
@@ -33,6 +42,9 @@ namespace Wagenheimer.NativeSocial.Editor
             public string steamStat;
             public string googlePlayId;
             public string appleId;
+
+            /// <summary>Extra translations beyond the primary-locale texts above (optional, additive in the v1 format).</summary>
+            public List<ExchangeLocalization> localizations;
         }
 
         [Serializable]
@@ -54,6 +66,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 var notEarned = AchievementTextResolver.NotEarned(e, language);
                 return new ExchangeEntry
                 {
+                    localizations = BuildLocalizations(map, e, language),
                     key = AchievementTierMap.LocId(e.TrophyNumber, e.Tier),
                     displayName = AchievementTextResolver.Name(map, e, language).Text ?? string.Empty,
                     earnedDescription = string.IsNullOrEmpty(earned.Text) ? null : earned.Text,
@@ -65,6 +78,39 @@ namespace Wagenheimer.NativeSocial.Editor
                     appleId = string.IsNullOrEmpty(e.AppleId) ? null : e.AppleId
                 };
             }).ToList();
+        }
+
+        /// <summary>
+        /// Every OTHER I2 language that has a real translation of this tier's name, strictly (no English fallback:
+        /// English text labeled as pt-BR would be worse than no pt-BR at all). Empty without I2.
+        /// </summary>
+        internal static List<ExchangeLocalization> BuildLocalizations(AchievementTierMap map, AchievementTierEntry entry, string primaryLanguage)
+        {
+            var result = new List<ExchangeLocalization>();
+            if (!I2Bridge.IsAvailable) return result;
+
+            var seenLocales = new HashSet<string> { LocaleFor(primaryLanguage) };
+            foreach (var language in I2Bridge.GetLanguages())
+            {
+                if (language == primaryLanguage) continue;
+
+                var name = AchievementTextResolver.Name(map, entry, language, allowEnglishFallback: false);
+                if (name.Source != TextSource.I2) continue;
+
+                var locale = LocaleFor(language);
+                if (!seenLocales.Add(locale)) continue; // two I2 languages mapping to one store locale: first wins
+
+                var earned = AchievementTextResolver.Earned(entry, language, allowEnglishFallback: false);
+                var notEarned = AchievementTextResolver.NotEarned(entry, language, allowEnglishFallback: false);
+                result.Add(new ExchangeLocalization
+                {
+                    locale = locale,
+                    name = name.Text,
+                    earnedDescription = earned.Source == TextSource.I2 ? earned.Text : null,
+                    notEarnedDescription = notEarned.Source == TextSource.I2 ? notEarned.Text : null
+                });
+            }
+            return result;
         }
 
         /// <summary>BCP-47 style locale for the exchange file from an I2 language name/code. Falls back to "en-US".</summary>

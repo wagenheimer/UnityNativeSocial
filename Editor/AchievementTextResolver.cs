@@ -40,14 +40,14 @@ namespace Wagenheimer.NativeSocial.Editor
     /// </summary>
     internal static class AchievementTextResolver
     {
-        public static ResolvedText Resolve(string term, string literal, string language)
+        public static ResolvedText Resolve(string term, string literal, string language, bool allowEnglishFallback = true)
         {
             var result = new ResolvedText { Term = term };
 
             if (!string.IsNullOrEmpty(term) && I2Bridge.IsAvailable)
             {
                 var text = I2Bridge.GetTranslation(term, language);
-                if (text == null && language != I2Bridge.DefaultLanguage)
+                if (text == null && allowEnglishFallback && language != I2Bridge.DefaultLanguage)
                     text = I2Bridge.GetTranslation(term, I2Bridge.DefaultLanguage);
 
                 if (text != null)
@@ -59,7 +59,9 @@ namespace Wagenheimer.NativeSocial.Editor
                 result.TermUnresolved = true;
             }
 
-            if (!string.IsNullOrEmpty(literal))
+            // The literal fallback is authored in the source language, so it is never a valid translation for a
+            // different language when English fallback is off (e.g. when exporting extra locales).
+            if (!string.IsNullOrEmpty(literal) && (allowEnglishFallback || language == I2Bridge.DefaultLanguage))
             {
                 result.Text = literal;
                 result.Source = TextSource.Literal;
@@ -70,19 +72,19 @@ namespace Wagenheimer.NativeSocial.Editor
             return result;
         }
 
-        public static ResolvedText Name(AchievementTierMap map, AchievementTierEntry entry, string language)
+        public static ResolvedText Name(AchievementTierMap map, AchievementTierEntry entry, string language, bool allowEnglishFallback = true)
         {
-            var resolved = Resolve(entry.NameTerm, entry.DisplayName, language);
+            var resolved = Resolve(entry.NameTerm, entry.DisplayName, language, allowEnglishFallback);
             if (resolved.Source == TextSource.I2 && map.AppendTierNumeral && map.TierCount(entry.TrophyNumber) > 1)
                 resolved.Text += " " + AchievementTierMap.RomanNumeral(entry.Tier);
             return resolved;
         }
 
-        public static ResolvedText Earned(AchievementTierEntry entry, string language) =>
-            Resolve(entry.EarnedDescriptionTerm, entry.EarnedDescription, language);
+        public static ResolvedText Earned(AchievementTierEntry entry, string language, bool allowEnglishFallback = true) =>
+            Resolve(entry.EarnedDescriptionTerm, entry.EarnedDescription, language, allowEnglishFallback);
 
-        public static ResolvedText NotEarned(AchievementTierEntry entry, string language) =>
-            Resolve(entry.NotEarnedDescriptionTerm, entry.NotEarnedDescription, language);
+        public static ResolvedText NotEarned(AchievementTierEntry entry, string language, bool allowEnglishFallback = true) =>
+            Resolve(entry.NotEarnedDescriptionTerm, entry.NotEarnedDescription, language, allowEnglishFallback);
     }
 
     /// <summary>Bulk I2 term maintenance for an <see cref="AchievementTierMap"/>: default keys + generating the missing terms.</summary>

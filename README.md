@@ -209,6 +209,23 @@ The export format is intentionally simple, versioned JSON (see
 `Editor/AchievementExchangeExporter.cs`) — if you don't use AppDeployHub, it's still a reasonable
 starting point for writing your own importer against Google Play Console / App Store Connect.
 
+### Sending straight to AppDeployHub (no file)
+
+The achievement editor has a **☁ AppDeployHub** card that pushes the whole map to AppDeployHub through its API:
+
+1. In AppDeployHub create an API key (**Studio → API keys**); the secret is shown once.
+2. In the card enter the **Server URL** (https; plain http only for localhost) and paste the key. The URL and chosen
+   app are saved in `ProjectSettings/NativeSocialAppDeployHub.json` (no secret in it). The key is stored only in your
+   Editor preferences — or read from the `APPDEPLOYHUB_API_KEY` environment variable — and never written to the project.
+3. **Load apps** lists your studio's apps (it preselects the one whose package name matches this project), then
+   **Send to AppDeployHub**. A confirmation shows what will be sent.
+
+Texts go as English plus every other I2 language that has a *real* translation of the name (English is never sent
+labeled as another language). AppDeployHub upserts by key into both Google Play and Apple Game Center, nothing is ever
+deleted, and **nothing is pushed to a store unless you tick the push boxes** — by default you review and push from
+AppDeployHub. The file export above remains available and now carries the same translations.
+
+
 ## API
 
 ### `NativeSocial.Initialize(androidMap, iosMap, steamMap, androidLeaderboardMap, iosLeaderboardMap)`

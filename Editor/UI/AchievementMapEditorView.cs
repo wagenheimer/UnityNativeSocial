@@ -55,6 +55,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             Root.Add(BuildToolbar());
+            Root.Add(BuildAppDeployHubCard());
             _summary = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, marginBottom = 8 } };
             Root.Add(_summary);
             _list = new VisualElement();
@@ -154,6 +155,166 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 b.RemoveFromClassList("ns-btn-secondary");
                 b.AddToClassList(f == _filter ? "ns-btn-primary" : "ns-btn-secondary");
             }
+        }
+
+        // ── AppDeployHub (online) ────────────────────────────────────────────────
+
+        private AppDeployHubClient.AppSummary[] _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+        private bool _hubBusy;
+        private bool _pushGooglePlay;
+        private bool _pushGameCenter;
+
+        private VisualElement BuildAppDeployHubCard()
+        {
+            var card = NativeSocialUIStyle.CreateCard("☁ AppDeployHub",
+                "Send these achievements straight to AppDeployHub — no file to export or upload. Names/texts go in English plus every other I2 language that has a real translation.");
+
+            var url = new TextField("Server URL") { value = AppDeployHubSettings.BaseUrl, tooltip = "e.g. https://your-appdeployhub.example.com (https required; plain http only for localhost)" };
+            url.RegisterCallback<FocusOutEvent>(_ => AppDeployHubSettings.BaseUrl = url.value);
+            card.Add(url);
+
+            var key = new TextField("API key") { isPasswordField = true, value = AppDeployHubSettings.Token, tooltip = "Create one in AppDeployHub: Studio → API keys. Stored only in your Editor preferences (or the " + AppDeployHubSettings.TokenEnvVar + " environment variable), never in the project." };
+            if (AppDeployHubSettings.TokenFromEnvironment)
+            {
+                key.SetEnabled(false);
+                key.tooltip = "Taken from the " + AppDeployHubSettings.TokenEnvVar + " environment variable.";
+            }
+            key.RegisterCallback<FocusOutEvent>(_ => AppDeployHubSettings.Token = key.value);
+            card.Add(key);
+
+            var appRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 6 } };
+            var appLabel = new Label { style = { marginRight = 8, flexGrow = 1 } };
+            appRow.Add(appLabel);
+            var appPopupHost = new VisualElement();
+            appRow.Add(appPopupHost);
+            var loadBtn = NativeSocialUIStyle.CreateButton("↻ Load apps", null);
+            appRow.Add(loadBtn);
+            card.Add(appRow);
+
+            void UpdateAppLabel() =>
+                appLabel.text = string.IsNullOrEmpty(AppDeployHubSettings.AppId) ? "App: (none selected — click Load apps)" : $"App: {AppDeployHubSettings.AppName}";
+            UpdateAppLabel();
+
+            loadBtn.clicked += () =>
+            {
+                AppDeployHubSettings.BaseUrl = url.value;
+                if (!AppDeployHubSettings.TokenFromEnvironment) AppDeployHubSettings.Token = key.value;
+
+                loadBtn.SetEnabled(false);
+                loadBtn.text = "Loading…";
+                AppDeployHubClient.RunThen(AppDeployHubClient.GetAppsAsync(), response =>
+                {
+                    loadBtn.SetEnabled(true);
+                    loadBtn.text = "↻ Load apps";
+
+                    if (!response.Ok)
+                    {
+                        EditorUtility.DisplayDialog("AppDeployHub", response.Error ?? "Unknown error.", "OK");
+                        return;
+                    }
+
+                    _hubApps = AppDeployHubClient.ParseApps(response.Body);
+                    if (_hubApps.Length == 0)
+                    {
+                        EditorUtility.DisplayDialog("AppDeployHub", "Connected, but this studio has no apps yet. Add the app in AppDeployHub first.", "OK");
+                        return;
+                    }
+
+                    // Prefer the saved app, then the one whose package name matches this project, then the first.
+                    var selected = _hubApps.FirstOrDefault(a => a.id == AppDeployHubSettings.AppId)
+                                   ?? _hubApps.FirstOrDefault(a => !string.IsNullOrEmpty(a.packageName) && a.packageName == PlayerSettings.applicationIdentifier)
+                                   ?? _hubApps[0];
+                    AppDeployHubSettings.SetApp(selected.id, selected.name);
+
+                    appPopupHost.Clear();
+                    var names = _hubApps.Select(a => string.IsNullOrEmpty(a.packageName) ? a.name : $"{a.name}  ({a.packageName})").ToList();
+                    var popup = new PopupField<string>(names, Array.IndexOf(_hubApps, selected));
+                    popup.RegisterValueChangedCallback(e =>
+                    {
+                        var chosen = _hubApps[names.IndexOf(e.newValue)];
+                        AppDeployHubSettings.SetApp(chosen.id, chosen.name);
+                        UpdateAppLabel();
+                    });
+                    appPopupHost.Add(popup);
+                    UpdateAppLabel();
+                });
+            };
+
+            var pushGp = new Toggle("Also queue the Google Play push (creates the achievements on the store)") { value = _pushGooglePlay };
+            pushGp.RegisterValueChangedCallback(e => _pushGooglePlay = e.newValue);
+            var pushGc = new Toggle("Also queue the Apple Game Center push (creates the achievements on the store)") { value = _pushGameCenter };
+            pushGc.RegisterValueChangedCallback(e => _pushGameCenter = e.newValue);
+            pushGp.style.marginTop = 6;
+            card.Add(pushGp);
+            card.Add(pushGc);
+
+            var sendBtn = NativeSocialUIStyle.CreateButton("☁ Send to AppDeployHub", null, primary: true);
+            sendBtn.style.marginTop = 8;
+            sendBtn.clicked += () => SendToAppDeployHub(sendBtn, url.value, key.value);
+            card.Add(sendBtn);
+
+            return card;
+        }
+
+        private void SendToAppDeployHub(Button sendBtn, string urlValue, string keyValue)
+        {
+            if (_hubBusy) return;
+
+            AppDeployHubSettings.BaseUrl = urlValue;
+            if (!AppDeployHubSettings.TokenFromEnvironment) AppDeployHubSettings.Token = keyValue;
+
+            if (string.IsNullOrEmpty(AppDeployHubSettings.AppId))
+            {
+                EditorUtility.DisplayDialog("AppDeployHub", "Click \"Load apps\" and pick the app first.", "OK");
+                return;
+            }
+            if (_map.Entries.Count == 0)
+            {
+                EditorUtility.DisplayDialog("AppDeployHub", "This map has no achievements to send.", "OK");
+                return;
+            }
+
+            var language = I2Bridge.DefaultLanguage;
+            var extraLocales = I2Bridge.IsAvailable
+                ? _map.Entries.SelectMany(e => AchievementExchangeExporter.BuildLocalizations(_map, e, language)).Select(l => l.locale).Distinct().ToList()
+                : new List<string>();
+
+            var message = $"Send {_map.Entries.Count} tier(s) to the AppDeployHub app \"{AppDeployHubSettings.AppName}\"?\n\n" +
+                          $"Texts: {language}" + (extraLocales.Count > 0 ? $" + {extraLocales.Count} other language(s) ({string.Join(", ", extraLocales)})" : " only") + ".\n" +
+                          "This creates or updates the achievement rows in AppDeployHub (matched by key). Nothing is deleted.";
+            if (_pushGooglePlay || _pushGameCenter)
+                message += "\n\n⚠ You also chose to QUEUE A STORE PUSH: " +
+                           string.Join(" and ", new[] { _pushGooglePlay ? "Google Play" : null, _pushGameCenter ? "Apple Game Center" : null }.Where(x => x != null)) +
+                           " — that creates the achievements for real on the store console.";
+            if (!EditorUtility.DisplayDialog("Send to AppDeployHub", message, "Send", "Cancel")) return;
+
+            var json = AchievementExchangeExporter.BuildJson(_map, PlayerSettings.productName, AchievementExchangeExporter.LocaleFor(language), language);
+
+            _hubBusy = true;
+            sendBtn.SetEnabled(false);
+            sendBtn.text = "Sending…";
+            AppDeployHubClient.RunThen(
+                AppDeployHubClient.ImportAsync(AppDeployHubSettings.AppId, json, _pushGooglePlay, _pushGameCenter),
+                response =>
+                {
+                    _hubBusy = false;
+                    sendBtn.SetEnabled(true);
+                    sendBtn.text = "☁ Send to AppDeployHub";
+
+                    if (!response.Ok)
+                    {
+                        EditorUtility.DisplayDialog("Send failed", response.Error ?? "Unknown error.", "OK");
+                        return;
+                    }
+
+                    var r = AppDeployHubClient.ParseImportResult(response.Body);
+                    EditorUtility.DisplayDialog("Sent to AppDeployHub",
+                        $"Google Play: {r.googlePlayCreated} created, {r.googlePlayUpdated} updated\n" +
+                        $"Apple Game Center: {r.gameCenterCreated} created, {r.gameCenterUpdated} updated\n" +
+                        $"Languages: {(r.locales == null ? "?" : string.Join(", ", r.locales))}\n" +
+                        (r.googlePlayPushQueued || r.gameCenterPushQueued ? "\nStore push queued — check the job in AppDeployHub." : "\nNothing was pushed to a store: open the app's Achievements page in AppDeployHub to review and push."),
+                        "OK");
+                });
         }
 
         // ── Summary ──────────────────────────────────────────────────────────────
