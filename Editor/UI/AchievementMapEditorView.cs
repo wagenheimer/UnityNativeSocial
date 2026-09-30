@@ -392,6 +392,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 return;
             }
 
+            if (!OfferToCreateMissingTerms()) return;
+
             var language = I2Bridge.DefaultLanguage;
             var extraLocales = I2Bridge.IsAvailable
                 ? _map.Entries.SelectMany(e => AchievementExchangeExporter.BuildLocalizations(_map, e, language)).Select(l => l.locale).Distinct().ToList()
@@ -734,6 +736,33 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             _map.Entries.RemoveAt(index);
             EditorUtility.SetDirty(_map);
             Refresh();
+        }
+
+        /// <summary>
+        /// Before sending, offers to fill empty term keys and create the I2 terms that don't exist yet, so nothing goes
+        /// out without text. Returns false when the user cancels the send.
+        /// </summary>
+        private bool OfferToCreateMissingTerms()
+        {
+            if (!I2Bridge.IsAvailable) return true;
+
+            var hasEmptyKeys = _map.Entries.Any(e => string.IsNullOrEmpty(e.NameTerm) || string.IsNullOrEmpty(e.EarnedDescriptionTerm) || string.IsNullOrEmpty(e.NotEarnedDescriptionTerm));
+            var missing = AchievementI2Tools.FindMissingTerms(_map);
+            if (!hasEmptyKeys && missing.Count == 0) return true;
+
+            var choice = EditorUtility.DisplayDialogComplex("Missing I2 terms",
+                (hasEmptyKeys ? "Some achievements have no term key set. " : string.Empty) +
+                $"{missing.Count} term(s) don't exist in I2 yet, so those achievements would be sent without text.\n\n" +
+                "Create them now? Missing keys get the conventional names, terms are created with English text only, and existing translations are never overwritten.",
+                "Create and continue", "Cancel", "Send anyway");
+
+            if (choice == 1) return false;
+            if (choice == 2) return true;
+
+            AchievementI2Tools.FillDefaultTermKeys(_map);
+            AchievementI2Tools.GenerateMissingTerms(_map);
+            Refresh();
+            return true;
         }
 
         private void GenerateMissingTerms()
