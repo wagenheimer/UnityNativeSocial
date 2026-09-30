@@ -313,11 +313,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                     return;
                 }
 
-                // Prefer the saved app, then the one whose package name matches this project, then the first.
-                var selected = _hubApps.FirstOrDefault(a => a.id == AppDeployHubSettings.AppId)
-                               ?? _hubApps.FirstOrDefault(a => !string.IsNullOrEmpty(a.packageName) && a.packageName == PlayerSettings.applicationIdentifier)
-                               ?? _hubApps[0];
-                AppDeployHubSettings.SetApp(selected.id, selected.name);
+                // Prefer the saved selection, then the records matching this project's Android/iOS identifiers
+                // (plus their sibling store record), then the first game.
+                var saved = _hubApps.Where(a => AppDeployHubSettings.AppIds.Contains(a.id)).Select(a => a.id).ToList();
+                if (saved.Count == 0)
+                {
+                    var androidId = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android);
+                    var iosId = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS);
+                    saved = _hubApps.Where(a => AppDeployHubAppPicker.Identifier(a) is { Length: > 0 } id && (id == androidId || id == iosId)).Select(a => a.id).ToList();
+                    if (saved.Count == 0) saved.Add(_hubApps[0].id);
+                }
+                AppDeployHubSettings.SetApps(AppDeployHubAppPicker.WithSiblings(_hubApps, saved));
                 RebuildHubCard();
             });
         }
@@ -339,22 +345,10 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             var appRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 6 } };
 
-            if (_hubApps.Length > 0)
-            {
-                var names = _hubApps.Select(a => $"{a.studioName} / {a.name}" + (string.IsNullOrEmpty(a.packageName) ? string.Empty : $"  ({a.packageName})")).ToList();
-                var current = Mathf.Max(0, Array.FindIndex(_hubApps, a => a.id == AppDeployHubSettings.AppId));
-                var popup = new PopupField<string>("App", names, current) { style = { flexGrow = 1 } };
-                popup.RegisterValueChangedCallback(e =>
-                {
-                    var chosen = _hubApps[names.IndexOf(e.newValue)];
-                    AppDeployHubSettings.SetApp(chosen.id, chosen.name);
-                });
-                appRow.Add(popup);
-            }
-            else
-            {
+            if (_hubApps.Length == 0)
                 appRow.Add(new Label(_hubAppsRequested ? "Loading your apps…" : "No apps loaded.") { style = { flexGrow = 1, color = NativeSocialUIStyle.ColorTextMuted } });
-            }
+            else
+                appRow.Add(new Label("Send to (tick every store record of this game — Android receives Google Play achievements, iOS receives Game Center):") { style = { flexGrow = 1, flexShrink = 1, whiteSpace = WhiteSpace.Normal, color = NativeSocialUIStyle.ColorTextMuted } });
 
             appRow.Add(NativeSocialUIStyle.CreateButton("↻ Refresh apps", () =>
             {
@@ -362,6 +356,9 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 LoadHubApps();
             }));
             card.Add(appRow);
+
+            if (_hubApps.Length > 0)
+                card.Add(new AppDeployHubAppPicker(_hubApps, AppDeployHubSettings.AppIds, ids => AppDeployHubSettings.SetApps(ids)).Build());
 
             var pushGp = new Toggle("Also queue the Google Play push (creates the achievements on the store)") { value = _pushGooglePlay };
             pushGp.RegisterValueChangedCallback(e => _pushGooglePlay = e.newValue);
@@ -381,9 +378,10 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             if (_hubBusy) return;
 
-            if (string.IsNullOrEmpty(AppDeployHubSettings.AppId))
+            var targets = _hubApps.Where(a => AppDeployHubSettings.AppIds.Contains(a.id)).ToList();
+            if (targets.Count == 0)
             {
-                EditorUtility.DisplayDialog("AppDeployHub", "Pick the app first (use \"Refresh apps\" if the list is empty).", "OK");
+                EditorUtility.DisplayDialog("AppDeployHub", "Tick at least one app first (use \"Refresh apps\" if the list is empty).", "OK");
                 return;
             }
             if (_map.Entries.Count == 0)
@@ -399,7 +397,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 ? _map.Entries.SelectMany(e => AchievementExchangeExporter.BuildLocalizations(_map, e, language)).Select(l => l.locale).Distinct().ToList()
                 : new List<string>();
 
-            var message = $"Send {_map.Entries.Count} tier(s) to the AppDeployHub app \"{AppDeployHubSettings.AppName}\"?\n\n" +
+            var targetLines = string.Join("\n", targets.Select(t => $"• {t.name} — {AppDeployHubAppPicker.PlatformLabel(t)} ({AppDeployHubAppPicker.StoreLabel(t)})"));
+            var message = $"Send {_map.Entries.Count} tier(s) to:\n{targetLines}\n\n" +
                           $"Texts: {language}" + (extraLocales.Count > 0 ? $" + {extraLocales.Count} other language(s) ({string.Join(", ", extraLocales)})" : " only") + ".\n" +
                           "This creates or updates the achievement rows in AppDeployHub (matched by key). Nothing is deleted.";
             if (_pushGooglePlay || _pushGameCenter)
@@ -413,27 +412,51 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             _hubBusy = true;
             sendBtn.SetEnabled(false);
             sendBtn.text = "Sending…";
+            SendNext(targets, 0, json, sendBtn, new List<string>());
+        }
+
+        /// <summary>Sends to the selected apps one after another and reports every result in a single dialog.</summary>
+        private void SendNext(List<AppDeployHubClient.AppSummary> targets, int index, string json, Button sendBtn, List<string> report)
+        {
+            if (index >= targets.Count)
+            {
+                _hubBusy = false;
+                sendBtn.SetEnabled(true);
+                sendBtn.text = "☁ Send to AppDeployHub";
+                EditorUtility.DisplayDialog("AppDeployHub", string.Join("\n\n", report) +
+                    "\n\nNothing is pushed to a store unless you ticked the push boxes: open the app's Achievements page in AppDeployHub to review and push.", "OK");
+                return;
+            }
+
+            var target = targets[index];
             AppDeployHubClient.RunThen(
-                AppDeployHubClient.ImportAsync(AppDeployHubSettings.AppId, json, _pushGooglePlay, _pushGameCenter),
+                AppDeployHubClient.ImportAsync(target.id, json, _pushGooglePlay, _pushGameCenter),
                 response =>
                 {
-                    _hubBusy = false;
-                    sendBtn.SetEnabled(true);
-                    sendBtn.text = "☁ Send to AppDeployHub";
-
-                    if (!response.Ok)
+                    var title = $"{target.name} — {AppDeployHubAppPicker.PlatformLabel(target)}";
+                    if (response.Ok)
                     {
-                        HandleHubError(response);
+                        var r = AppDeployHubClient.ParseImportResult(response.Body);
+                        report.Add(title + ":\n" +
+                                   (r.googlePlayCreated + r.googlePlayUpdated > 0 ? $"  Google Play: {r.googlePlayCreated} created, {r.googlePlayUpdated} updated\n" : string.Empty) +
+                                   (r.gameCenterCreated + r.gameCenterUpdated > 0 ? $"  Apple Game Center: {r.gameCenterCreated} created, {r.gameCenterUpdated} updated\n" : string.Empty) +
+                                   $"  Languages: {(r.locales == null ? "?" : string.Join(", ", r.locales))}" +
+                                   (r.googlePlayPushQueued || r.gameCenterPushQueued ? "\n  Store push queued." : string.Empty));
+                        SendNext(targets, index + 1, json, sendBtn, report);
                         return;
                     }
 
-                    var r = AppDeployHubClient.ParseImportResult(response.Body);
-                    EditorUtility.DisplayDialog("Sent to AppDeployHub",
-                        $"Google Play: {r.googlePlayCreated} created, {r.googlePlayUpdated} updated\n" +
-                        $"Apple Game Center: {r.gameCenterCreated} created, {r.gameCenterUpdated} updated\n" +
-                        $"Languages: {(r.locales == null ? "?" : string.Join(", ", r.locales))}\n" +
-                        (r.googlePlayPushQueued || r.gameCenterPushQueued ? "\nStore push queued — check the job in AppDeployHub." : "\nNothing was pushed to a store: open the app's Achievements page in AppDeployHub to review and push."),
-                        "OK");
+                    report.Add(title + ": FAILED — " + (response.Error ?? "unknown error"));
+                    if (response.Status == 401 && !AppDeployHubSettings.TokenFromEnvironment)
+                    {
+                        // The session is dead: stop and show the sign-in form instead of failing every remaining app.
+                        HandleHubError(response);
+                        _hubBusy = false;
+                        sendBtn.SetEnabled(true);
+                        sendBtn.text = "☁ Send to AppDeployHub";
+                        return;
+                    }
+                    SendNext(targets, index + 1, json, sendBtn, report);
                 });
         }
 

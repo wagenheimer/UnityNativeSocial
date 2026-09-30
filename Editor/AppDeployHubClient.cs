@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -32,6 +33,7 @@ namespace Wagenheimer.NativeSocial.Editor
             public string baseUrl = string.Empty;
             public string appId = string.Empty;
             public string appName = string.Empty;
+            public string[] appIds = Array.Empty<string>();
         }
 
         private static Data _data;
@@ -71,6 +73,25 @@ namespace Wagenheimer.NativeSocial.Editor
         {
             Current.appId = appId ?? string.Empty;
             Current.appName = appName ?? string.Empty;
+            Current.appIds = string.IsNullOrEmpty(appId) ? Array.Empty<string>() : new[] { appId };
+            Save();
+        }
+
+        /// <summary>
+        /// The apps to send to. One game usually has one record per store (Android + iOS), so several can be
+        /// selected; a file saved before multi-select only has the single <c>appId</c>.
+        /// </summary>
+        public static string[] AppIds =>
+            Current.appIds is { Length: > 0 } ? Current.appIds
+            : string.IsNullOrEmpty(Current.appId) ? Array.Empty<string>()
+            : new[] { Current.appId };
+
+        public static void SetApps(System.Collections.Generic.IEnumerable<string> appIds)
+        {
+            var ids = appIds?.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToArray() ?? Array.Empty<string>();
+            Current.appIds = ids;
+            Current.appId = ids.Length > 0 ? ids[0] : string.Empty;
+            Current.appName = string.Empty;
             Save();
         }
 
@@ -120,7 +141,7 @@ namespace Wagenheimer.NativeSocial.Editor
     {
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
-        [Serializable] internal class AppSummary { public string id; public string name; public string packageName; public bool hasGooglePlayGamesApplicationId; public string studioId; public string studioName; }
+        [Serializable] internal class AppSummary { public string id; public string name; public string packageName; public bool hasGooglePlayGamesApplicationId; public string studioId; public string studioName; public string platform; public string bundleId; public string groupKey; }
         [Serializable] private class AppList { public AppSummary[] items; }
         [Serializable] private class ErrorBody { public string error; }
         [Serializable] private class LoginRequest { public string email; public string password; public string deviceName; }

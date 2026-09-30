@@ -219,7 +219,10 @@ The achievement editor has a **☁ AppDeployHub** card that pushes the whole map
    acts as your account, so **one sign-in covers every app in every studio you own**; it is kept in your Editor
    preferences (tied to that server) and can be revoked per device in AppDeployHub (**Studio > API keys**) or with
    **Sign out**.
-2. Pick the app (it preselects the one whose package name matches this project; the server URL and chosen app are
+2. Pick the app(s) from the searchable list: records are grouped per game and badged **Android** / **iOS** with their
+   package / bundle id. Tick **both** store records of your game - Android receives the Google Play achievements, iOS
+   the Game Center ones (the project's Android and iOS identifiers are preselected, siblings included; the
+   server URL and chosen apps are
    saved in `ProjectSettings/NativeSocialAppDeployHub.json` - no secret in it), then **Send to AppDeployHub**. A
    confirmation shows exactly what will be sent.
 
