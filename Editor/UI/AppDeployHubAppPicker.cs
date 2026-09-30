@@ -86,8 +86,9 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             search.RegisterValueChangedCallback(e => { _filter = e.newValue; RebuildList(); });
             root.Add(search);
 
-            _list.style.maxHeight = 280;
-            var scroll = new ScrollView(ScrollViewMode.Vertical) { style = { maxHeight = 280, marginTop = 4 } };
+            _list.style.flexShrink = 0;
+            var scroll = new ScrollView(ScrollViewMode.Vertical) { style = { maxHeight = 300, marginTop = 4, flexShrink = 0 } };
+            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             scroll.Add(_list);
             root.Add(scroll);
 
@@ -111,13 +112,13 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private VisualElement BuildGroup(List<AppDeployHubClient.AppSummary> group)
         {
-            var box = new VisualElement { style = { backgroundColor = NativeSocialUIStyle.ColorBgDark, marginBottom = 6 } };
+            var box = new VisualElement { style = { backgroundColor = NativeSocialUIStyle.ColorBgDark, marginBottom = 6, flexShrink = 0 } };
             box.SetRadius(6);
             box.SetPadding(8, 6);
             box.SetBorder(1, NativeSocialUIStyle.ColorCardBorder);
 
-            var header = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
-            header.Add(new Label($"{group[0].name}") { style = { unityFontStyleAndWeight = FontStyle.Bold, flexGrow = 1, color = NativeSocialUIStyle.ColorText } });
+            var header = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, flexShrink = 0 } };
+            header.Add(new Label($"{group[0].name}") { style = { unityFontStyleAndWeight = FontStyle.Bold, flexGrow = 1, flexShrink = 1, color = NativeSocialUIStyle.ColorText } });
             header.Add(new Label(group[0].studioName) { style = { color = NativeSocialUIStyle.ColorTextMuted, marginRight = 6 } });
             if (group.Count > 1)
             {
@@ -137,7 +138,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private VisualElement BuildRow(AppDeployHubClient.AppSummary app)
         {
-            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginTop = 3 } };
+            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginTop = 3, flexShrink = 0 } };
 
             var toggle = new Toggle { value = _selected.Contains(app.id) };
             toggle.RegisterValueChangedCallback(e =>
