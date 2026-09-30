@@ -209,22 +209,27 @@ The export format is intentionally simple, versioned JSON (see
 `Editor/AchievementExchangeExporter.cs`) — if you don't use AppDeployHub, it's still a reasonable
 starting point for writing your own importer against Google Play Console / App Store Connect.
 
-### Sending straight to AppDeployHub (no file)
+### Sending straight to AppDeployHub (no file, no key to copy)
 
 The achievement editor has a **☁ AppDeployHub** card that pushes the whole map to AppDeployHub through its API:
 
-1. In AppDeployHub create an API key (**Studio → API keys**); the secret is shown once.
-2. In the card enter the **Server URL** (https; plain http only for localhost) and paste the key. The URL and chosen
-   app are saved in `ProjectSettings/NativeSocialAppDeployHub.json` (no secret in it). The key is stored only in your
-   Editor preferences — or read from the `APPDEPLOYHUB_API_KEY` environment variable — and never written to the project.
-3. **Load apps** lists your studio's apps (it preselects the one whose package name matches this project), then
-   **Send to AppDeployHub**. A confirmation shows what will be sent.
+1. Enter the **Server URL** (https; plain http only for localhost) and sign in with your **AppDeployHub e-mail and
+   password**. AppDeployHub checks them with the same rules as the website (same lockout) and issues a key for this
+   machine *automatically* - you never see, copy or manage it, and the **password is never stored or logged**. The key
+   acts as your account, so **one sign-in covers every app in every studio you own**; it is kept in your Editor
+   preferences (tied to that server) and can be revoked per device in AppDeployHub (**Studio > API keys**) or with
+   **Sign out**.
+2. Pick the app (it preselects the one whose package name matches this project; the server URL and chosen app are
+   saved in `ProjectSettings/NativeSocialAppDeployHub.json` - no secret in it), then **Send to AppDeployHub**. A
+   confirmation shows exactly what will be sent.
+
+Accounts that cannot sign in by password, and CI, can paste a studio API key under *Advanced* (or set the
+`APPDEPLOYHUB_API_KEY` environment variable) instead.
 
 Texts go as English plus every other I2 language that has a *real* translation of the name (English is never sent
 labeled as another language). AppDeployHub upserts by key into both Google Play and Apple Game Center, nothing is ever
-deleted, and **nothing is pushed to a store unless you tick the push boxes** — by default you review and push from
-AppDeployHub. The file export above remains available and now carries the same translations.
-
+deleted, and **nothing is pushed to a store unless you tick the push boxes** - by default you review and push from
+AppDeployHub. The file export above remains available and carries the same translations.
 
 ## API
 

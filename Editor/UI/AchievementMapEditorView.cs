@@ -55,7 +55,9 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             Root.Add(BuildToolbar());
-            Root.Add(BuildAppDeployHubCard());
+            _hubContainer = new VisualElement();
+            Root.Add(_hubContainer);
+            RebuildHubCard();
             _summary = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, marginBottom = 8 } };
             Root.Add(_summary);
             _list = new VisualElement();
@@ -159,86 +161,207 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         // ── AppDeployHub (online) ────────────────────────────────────────────────
 
+        private VisualElement _hubContainer;
         private AppDeployHubClient.AppSummary[] _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+        private bool _hubAppsRequested;
         private bool _hubBusy;
         private bool _pushGooglePlay;
         private bool _pushGameCenter;
 
+        private void RebuildHubCard()
+        {
+            _hubContainer.Clear();
+            _hubContainer.Add(BuildAppDeployHubCard());
+        }
+
         private VisualElement BuildAppDeployHubCard()
         {
             var card = NativeSocialUIStyle.CreateCard("☁ AppDeployHub",
-                "Send these achievements straight to AppDeployHub — no file to export or upload. Names/texts go in English plus every other I2 language that has a real translation.");
+                "Send these achievements straight to AppDeployHub: sign in with your AppDeployHub e-mail and password, pick the app, send. No file to upload and no key to copy. Texts go in English plus every other I2 language that has a real translation.");
 
             var url = new TextField("Server URL") { value = AppDeployHubSettings.BaseUrl, tooltip = "e.g. https://your-appdeployhub.example.com (https required; plain http only for localhost)" };
-            url.RegisterCallback<FocusOutEvent>(_ => AppDeployHubSettings.BaseUrl = url.value);
+            url.RegisterCallback<FocusOutEvent>(_ =>
+            {
+                if (url.value == AppDeployHubSettings.BaseUrl) return;
+                AppDeployHubSettings.BaseUrl = url.value;
+                _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+                _hubAppsRequested = false;
+                RebuildHubCard(); // a session belongs to one server, so the signed-in state may change
+            });
             card.Add(url);
 
-            var key = new TextField("API key") { isPasswordField = true, value = AppDeployHubSettings.Token, tooltip = "Create one in AppDeployHub: Studio → API keys. Stored only in your Editor preferences (or the " + AppDeployHubSettings.TokenEnvVar + " environment variable), never in the project." };
-            if (AppDeployHubSettings.TokenFromEnvironment)
+            if (AppDeployHubSettings.IsSignedIn) AddSignedInRow(card);
+            else AddSignInForm(card, url);
+
+            if (AppDeployHubSettings.IsSignedIn)
             {
-                key.SetEnabled(false);
-                key.tooltip = "Taken from the " + AppDeployHubSettings.TokenEnvVar + " environment variable.";
-            }
-            key.RegisterCallback<FocusOutEvent>(_ => AppDeployHubSettings.Token = key.value);
-            card.Add(key);
-
-            var appRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 6 } };
-            var appLabel = new Label { style = { marginRight = 8, flexGrow = 1 } };
-            appRow.Add(appLabel);
-            var appPopupHost = new VisualElement();
-            appRow.Add(appPopupHost);
-            var loadBtn = NativeSocialUIStyle.CreateButton("↻ Load apps", null);
-            appRow.Add(loadBtn);
-            card.Add(appRow);
-
-            void UpdateAppLabel() =>
-                appLabel.text = string.IsNullOrEmpty(AppDeployHubSettings.AppId) ? "App: (none selected — click Load apps)" : $"App: {AppDeployHubSettings.AppName}";
-            UpdateAppLabel();
-
-            loadBtn.clicked += () =>
-            {
-                AppDeployHubSettings.BaseUrl = url.value;
-                if (!AppDeployHubSettings.TokenFromEnvironment) AppDeployHubSettings.Token = key.value;
-
-                loadBtn.SetEnabled(false);
-                loadBtn.text = "Loading…";
-                AppDeployHubClient.RunThen(AppDeployHubClient.GetAppsAsync(), response =>
+                if (_hubApps.Length == 0 && !_hubAppsRequested)
                 {
-                    loadBtn.SetEnabled(true);
-                    loadBtn.text = "↻ Load apps";
+                    _hubAppsRequested = true;
+                    LoadHubApps();
+                }
+                AddAppAndSendControls(card);
+            }
 
+            return card;
+        }
+
+        private void AddSignInForm(VisualElement card, TextField url)
+        {
+            var email = new TextField("E-mail") { value = AppDeployHubSettings.Email };
+            var password = new TextField("Password") { isPasswordField = true, tooltip = "Used once to sign in. It is never stored or logged." };
+            card.Add(email);
+            card.Add(password);
+
+            var signIn = NativeSocialUIStyle.CreateButton("🔑 Sign in", null, primary: true);
+            signIn.style.marginTop = 6;
+            void DoSignIn()
+            {
+                if (_hubBusy) return;
+                AppDeployHubSettings.BaseUrl = url.value;
+                var urlError = AppDeployHubClient.ValidateBaseUrl(url.value);
+                if (urlError != null) { EditorUtility.DisplayDialog("AppDeployHub", urlError, "OK"); return; }
+                if (string.IsNullOrWhiteSpace(email.value) || string.IsNullOrEmpty(password.value))
+                {
+                    EditorUtility.DisplayDialog("AppDeployHub", "Enter your AppDeployHub e-mail and password.", "OK");
+                    return;
+                }
+
+                AppDeployHubSettings.Email = email.value;
+                var typedPassword = password.value;
+                password.value = string.Empty; // never keep the password around
+
+                _hubBusy = true;
+                signIn.SetEnabled(false);
+                signIn.text = "Signing in…";
+                AppDeployHubClient.RunThen(AppDeployHubClient.LoginAsync(email.value, typedPassword), response =>
+                {
+                    _hubBusy = false;
                     if (!response.Ok)
                     {
-                        EditorUtility.DisplayDialog("AppDeployHub", response.Error ?? "Unknown error.", "OK");
+                        signIn.SetEnabled(true);
+                        signIn.text = "🔑 Sign in";
+                        EditorUtility.DisplayDialog("Sign in failed", response.Error ?? "Unknown error.", "OK");
                         return;
                     }
 
-                    _hubApps = AppDeployHubClient.ParseApps(response.Body);
-                    if (_hubApps.Length == 0)
-                    {
-                        EditorUtility.DisplayDialog("AppDeployHub", "Connected, but this studio has no apps yet. Add the app in AppDeployHub first.", "OK");
-                        return;
-                    }
-
-                    // Prefer the saved app, then the one whose package name matches this project, then the first.
-                    var selected = _hubApps.FirstOrDefault(a => a.id == AppDeployHubSettings.AppId)
-                                   ?? _hubApps.FirstOrDefault(a => !string.IsNullOrEmpty(a.packageName) && a.packageName == PlayerSettings.applicationIdentifier)
-                                   ?? _hubApps[0];
-                    AppDeployHubSettings.SetApp(selected.id, selected.name);
-
-                    appPopupHost.Clear();
-                    var names = _hubApps.Select(a => string.IsNullOrEmpty(a.packageName) ? a.name : $"{a.name}  ({a.packageName})").ToList();
-                    var popup = new PopupField<string>(names, Array.IndexOf(_hubApps, selected));
-                    popup.RegisterValueChangedCallback(e =>
-                    {
-                        var chosen = _hubApps[names.IndexOf(e.newValue)];
-                        AppDeployHubSettings.SetApp(chosen.id, chosen.name);
-                        UpdateAppLabel();
-                    });
-                    appPopupHost.Add(popup);
-                    UpdateAppLabel();
+                    var login = AppDeployHubClient.ParseLogin(response.Body);
+                    AppDeployHubSettings.StoreToken(login.token);
+                    if (!string.IsNullOrEmpty(login.email)) AppDeployHubSettings.Email = login.email;
+                    _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+                    _hubAppsRequested = false;
+                    RebuildHubCard();
                 });
-            };
+            }
+            signIn.clicked += DoSignIn;
+            password.RegisterCallback<KeyDownEvent>(e =>
+            {
+                if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) DoSignIn();
+            });
+            card.Add(signIn);
+
+            // CI or an account that can't sign in with a password: paste a studio API key instead.
+            var advanced = new Foldout { text = "Advanced: use an API key instead (CI, or an account that can't sign in by password)", value = false, style = { marginTop = 6 } };
+            var key = new TextField("API key") { isPasswordField = true, tooltip = "Created in AppDeployHub: Studio > API keys. Stored only in your Editor preferences (or read from the " + AppDeployHubSettings.TokenEnvVar + " environment variable)." };
+            advanced.Add(key);
+            advanced.Add(NativeSocialUIStyle.CreateButton("Use this key", () =>
+            {
+                if (string.IsNullOrWhiteSpace(key.value)) return;
+                AppDeployHubSettings.BaseUrl = url.value;
+                AppDeployHubSettings.StoreToken(key.value);
+                _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+                _hubAppsRequested = false;
+                RebuildHubCard();
+            }));
+            card.Add(advanced);
+        }
+
+        private void AddSignedInRow(VisualElement card)
+        {
+            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginTop = 6 } };
+            var who = AppDeployHubSettings.TokenFromEnvironment
+                ? $"✔ Using the key from the {AppDeployHubSettings.TokenEnvVar} environment variable"
+                : $"✔ Signed in{(string.IsNullOrEmpty(AppDeployHubSettings.Email) ? string.Empty : " as " + AppDeployHubSettings.Email)}";
+            row.Add(new Label(who) { style = { flexGrow = 1, color = NativeSocialUIStyle.ColorSuccess } });
+
+            if (!AppDeployHubSettings.TokenFromEnvironment)
+            {
+                row.Add(NativeSocialUIStyle.CreateButton("Sign out", () =>
+                {
+                    // Tell the server to drop this machine's key (best effort), then forget it locally either way.
+                    AppDeployHubClient.RunThen(AppDeployHubClient.LogoutAsync(), _ => { });
+                    AppDeployHubSettings.ClearSession();
+                    _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+                    _hubAppsRequested = false;
+                    RebuildHubCard();
+                }));
+            }
+            card.Add(row);
+        }
+
+        private void LoadHubApps()
+        {
+            AppDeployHubClient.RunThen(AppDeployHubClient.GetAppsAsync(), response =>
+            {
+                if (!response.Ok) { HandleHubError(response); return; }
+
+                _hubApps = AppDeployHubClient.ParseApps(response.Body);
+                if (_hubApps.Length == 0)
+                {
+                    RebuildHubCard();
+                    EditorUtility.DisplayDialog("AppDeployHub", "Signed in, but your account has no apps yet. Add the app in AppDeployHub first.", "OK");
+                    return;
+                }
+
+                // Prefer the saved app, then the one whose package name matches this project, then the first.
+                var selected = _hubApps.FirstOrDefault(a => a.id == AppDeployHubSettings.AppId)
+                               ?? _hubApps.FirstOrDefault(a => !string.IsNullOrEmpty(a.packageName) && a.packageName == PlayerSettings.applicationIdentifier)
+                               ?? _hubApps[0];
+                AppDeployHubSettings.SetApp(selected.id, selected.name);
+                RebuildHubCard();
+            });
+        }
+
+        /// <summary>Shows a failed call; a 401 means the stored session is dead, so drop it and show the sign-in form again.</summary>
+        private void HandleHubError(AppDeployHubClient.Response response)
+        {
+            if (response.Status == 401 && !AppDeployHubSettings.TokenFromEnvironment)
+            {
+                AppDeployHubSettings.ClearSession();
+                _hubApps = Array.Empty<AppDeployHubClient.AppSummary>();
+                _hubAppsRequested = false;
+                RebuildHubCard();
+            }
+            EditorUtility.DisplayDialog("AppDeployHub", response.Error ?? "Unknown error.", "OK");
+        }
+
+        private void AddAppAndSendControls(VisualElement card)
+        {
+            var appRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 6 } };
+
+            if (_hubApps.Length > 0)
+            {
+                var names = _hubApps.Select(a => $"{a.studioName} / {a.name}" + (string.IsNullOrEmpty(a.packageName) ? string.Empty : $"  ({a.packageName})")).ToList();
+                var current = Mathf.Max(0, Array.FindIndex(_hubApps, a => a.id == AppDeployHubSettings.AppId));
+                var popup = new PopupField<string>("App", names, current) { style = { flexGrow = 1 } };
+                popup.RegisterValueChangedCallback(e =>
+                {
+                    var chosen = _hubApps[names.IndexOf(e.newValue)];
+                    AppDeployHubSettings.SetApp(chosen.id, chosen.name);
+                });
+                appRow.Add(popup);
+            }
+            else
+            {
+                appRow.Add(new Label(_hubAppsRequested ? "Loading your apps…" : "No apps loaded.") { style = { flexGrow = 1, color = NativeSocialUIStyle.ColorTextMuted } });
+            }
+
+            appRow.Add(NativeSocialUIStyle.CreateButton("↻ Refresh apps", () =>
+            {
+                _hubAppsRequested = true;
+                LoadHubApps();
+            }));
+            card.Add(appRow);
 
             var pushGp = new Toggle("Also queue the Google Play push (creates the achievements on the store)") { value = _pushGooglePlay };
             pushGp.RegisterValueChangedCallback(e => _pushGooglePlay = e.newValue);
@@ -250,22 +373,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             var sendBtn = NativeSocialUIStyle.CreateButton("☁ Send to AppDeployHub", null, primary: true);
             sendBtn.style.marginTop = 8;
-            sendBtn.clicked += () => SendToAppDeployHub(sendBtn, url.value, key.value);
+            sendBtn.clicked += () => SendToAppDeployHub(sendBtn);
             card.Add(sendBtn);
-
-            return card;
         }
 
-        private void SendToAppDeployHub(Button sendBtn, string urlValue, string keyValue)
+        private void SendToAppDeployHub(Button sendBtn)
         {
             if (_hubBusy) return;
 
-            AppDeployHubSettings.BaseUrl = urlValue;
-            if (!AppDeployHubSettings.TokenFromEnvironment) AppDeployHubSettings.Token = keyValue;
-
             if (string.IsNullOrEmpty(AppDeployHubSettings.AppId))
             {
-                EditorUtility.DisplayDialog("AppDeployHub", "Click \"Load apps\" and pick the app first.", "OK");
+                EditorUtility.DisplayDialog("AppDeployHub", "Pick the app first (use \"Refresh apps\" if the list is empty).", "OK");
                 return;
             }
             if (_map.Entries.Count == 0)
@@ -303,7 +421,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
                     if (!response.Ok)
                     {
-                        EditorUtility.DisplayDialog("Send failed", response.Error ?? "Unknown error.", "OK");
+                        HandleHubError(response);
                         return;
                     }
 

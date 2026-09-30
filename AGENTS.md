@@ -42,8 +42,9 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   Achievements tab and `AchievementTierMapInspector` (custom Inspector). Don't fork it into two copies — the
   UnityBuildPipeline Publishers UI drifted exactly that way.
 - `Editor/AppDeployHubClient.cs` - `AppDeployHubSettings` (server URL + chosen app in
-  `ProjectSettings/NativeSocialAppDeployHub.json`; the API key ONLY in EditorPrefs / the `APPDEPLOYHUB_API_KEY`
-  env var - never write a secret into a project file) and `AppDeployHubClient` (HttpClient against AppDeployHub
+  `ProjectSettings/NativeSocialAppDeployHub.json`; the e-mail and the device key AppDeployHub issues at sign-in ONLY in EditorPrefs (the key is tied to the
+  server that issued it) or the `APPDEPLOYHUB_API_KEY` env var; the PASSWORD is used once and never stored or logged -
+  never write a secret into a project file) and `AppDeployHubClient` (HttpClient against AppDeployHub
   `/api/v1`; results are delivered on the main thread by polling `EditorApplication.update`, never from a background
   thread). `ValidateBaseUrl` refuses plain http except for localhost so the key never travels unencrypted. A push to
   Google Play / Apple is opt-in per call and must stay opt-in: it creates real achievements on the store.

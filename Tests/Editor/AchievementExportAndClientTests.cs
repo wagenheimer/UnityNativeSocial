@@ -99,7 +99,7 @@ namespace Wagenheimer.NativeSocial.Tests
         [Test]
         public void Explain_GivesActionableMessages()
         {
-            StringAssert.Contains("revoked", AppDeployHubClient.Explain(401, string.Empty));
+            StringAssert.Contains("Sign in again", AppDeployHubClient.Explain(401, string.Empty));
             StringAssert.Contains("App not found", AppDeployHubClient.Explain(404, "{\"error\":\"App not found.\"}"));
             StringAssert.Contains("boom", AppDeployHubClient.Explain(500, "{\"error\":\"boom\"}"));
         }
@@ -123,6 +123,23 @@ namespace Wagenheimer.NativeSocial.Tests
             Assert.AreEqual(3, result.googlePlayCreated);
             Assert.AreEqual(2, result.locales.Length);
             Assert.IsFalse(result.googlePlayPushQueued);
+        }
+        [Test]
+        public void Explain_ForALoginAttempt_ShowsTheServersReasonInsteadOfSessionText()
+        {
+            Assert.AreEqual("Invalid e-mail or password.", AppDeployHubClient.Explain(401, string.Empty, authenticated: false));
+            StringAssert.Contains("locked", AppDeployHubClient.Explain(423, string.Empty, authenticated: false));
+        }
+
+        [Test]
+        public void ParseLogin_ReadsTheDeviceKeyAndStudios()
+        {
+            var login = AppDeployHubClient.ParseLogin(
+                "{\"token\":\"adh_abc\",\"email\":\"me@example.com\",\"deviceName\":\"Unity editor - PC\",\"studios\":[{\"id\":\"1\",\"name\":\"Green Sauce\"}]}");
+
+            Assert.AreEqual("adh_abc", login.token);
+            Assert.AreEqual("me@example.com", login.email);
+            Assert.AreEqual(1, login.studios.Length);
         }
     }
 }
