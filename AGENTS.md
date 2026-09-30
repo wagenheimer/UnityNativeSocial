@@ -32,6 +32,15 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   Play/Apple ID counts). Every finding also carries a plain-language `WhatIsThis` explanation, rendered by
   `Editor/UI/NativeSocialAuditView.cs` — when adding a new check, always fill this in; the audience is a
   developer unfamiliar with platform SDKs, not someone who's read this file.
+- `Editor/I2Bridge.cs` — reflection-only I2 Localization wrapper (languages, term lookup, `EnsureTerm` that seeds an
+  English translation without ever overwriting one). Never write `using I2.Loc;` here: no hard I2 dependency.
+  `Editor/AchievementTextResolver.cs` turns an entry's term keys (+ literal fallbacks) into name/earned/not-earned
+  strings for an I2 language, and `AchievementI2Tools` fills default term keys / generates missing terms — the UI
+  preview and the AppDeployHub exporter both go through the resolver so they can't disagree. Tier numeral
+  (I/II/III) is appended only to names resolved from a shared I2 term (`AppendTierNumeral`), never to literals.
+- `Editor/UI/AchievementMapEditorView.cs` — the card-per-trophy achievement editor, shared by the Dashboard's
+  Achievements tab and `AchievementTierMapInspector` (custom Inspector). Don't fork it into two copies — the
+  UnityBuildPipeline Publishers UI drifted exactly that way.
 - `Editor/NativeSocialDashboardWindow.cs` + `Editor/UI/*` — UI Toolkit dashboard (`ns-` USS prefix), same
   structure as `UnityRewiredHelper`'s: **Setup Audit**, **Achievements** (lists every `AchievementTierMap`
   asset, per-platform fill-in counts, Create New Map), **Live Tester** (`NativeSocialHelperView.cs` —

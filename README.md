@@ -146,7 +146,9 @@ that holds one row per achievement tier:
 | `SteamStat` | `BuildSteamMap()` | Steamworks stat name (e.g. `"Trophy4_2_Status"`), assumed to equal the achievement API name too — pass a custom map to `Initialize` instead if your Steam achievement names differ from your stat names. |
 | `GooglePlayId` | `BuildAndroidMap()` | Google Play Games achievement ID, from the Play Console (or auto-filled by AppDeployHub — see below). Leave empty until it exists: `NativeSocial.Report` no-ops for an unmapped LocId, so a partially-filled map is always safe to ship. |
 | `AppleId` | `BuildIosMap()` | Apple Game Center achievement ID, from App Store Connect (or auto-filled by AppDeployHub). Same empty-is-safe rule applies. |
-| `DisplayName`, `EarnedDescription`, `NotEarnedDescription`, `Points`, `IsHidden` | **Export only** — not read by `NativeSocial` itself | Player-facing text and store metadata, used solely by the "Export for AppDeployHub" button below to build a complete achievement definition (a bare LocId + platform ID isn't enough to *create* an achievement on a console, only to *report progress* to one that already exists). |
+| `NameTerm`, `EarnedDescriptionTerm`, `NotEarnedDescriptionTerm` | **Export + editor preview** — not read by `NativeSocial` itself | [I2 Localization](https://inter-illusion.com/tools/i2-localization) term keys for the tier's name / "earned" text / "not earned yet" hint. **Preferred source of all player-facing text.** Conventions: name = `trophy{N}` (shared by the trophy's tiers; the tier numeral I/II/III is appended automatically, see `AppendTierNumeral`), earned/not-earned = `Achievements/Trophy{N}_{tier}/Earned` and `.../NotEarned`. |
+| `DisplayName`, `EarnedDescription`, `NotEarnedDescription` (literals) | **Fallback only** — used when the term key is empty, I2 isn't installed, or the term has no translation | Plain-text fallbacks; shown in orange in the editor so you can see what still isn't localized. |
+| `Points`, `IsHidden` | **Export only** | Store metadata for the AppDeployHub export (points awarded; hidden until earned). |
 
 ```csharp
 [SerializeField] private AchievementTierMap achievementMap;
@@ -162,6 +164,24 @@ void Awake()
 // Report a tier by trophy number — no hand-formatted LocId strings:
 NativeSocial.Report(AchievementTierMap.LocId(trophyNumber: 4, tier: 2), delta: 1, current: 2, total: 3, completed: false);
 ```
+
+### The achievement editor (Dashboard → Achievements, or select the asset)
+
+Selecting an `AchievementTierMap` (or opening **Dashboard → Achievements**) shows a card per trophy with one
+row per tier: the resolved **name / earned / not-earned** texts, points, hidden flag, and ✔/✘ chips for Steam,
+Google Play, Apple and I2 at a glance. Use **Search** and the filter chips (*Missing Steam / Google Play /
+Apple / I2 terms / Hidden*) to find gaps; the **✎** button opens the full field editor for a tier.
+Texts are previewed in the **I2 language you pick** — the same resolution the AppDeployHub export uses.
+
+I2 support is optional and reflection-based (the package never hard-depends on I2):
+
+- **🔗 Fill default term keys** sets every empty term field to the convention above.
+- **🛠 Generate missing I2 terms** creates, in your I2 language source, every configured term that doesn't exist
+  yet. Only **English** text is written (seeded from the literal fallback, or the trophy's shared
+  `trophy{N}description` term) and an existing translation is **never overwritten** — translate the rest with
+  I2's own tools.
+- **⬆ Export for AppDeployHub** exports the texts resolved in the selected language (locale derived from the
+  I2 language code).
 
 ### Exporting to AppDeployHub
 

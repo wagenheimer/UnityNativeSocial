@@ -44,36 +44,69 @@ namespace Wagenheimer.NativeSocial.Editor
             public List<ExchangeEntry> entries;
         }
 
-        /// <summary>Builds the exchange entries for every row in <paramref name="map"/>, in file order.</summary>
-        internal static List<ExchangeEntry> BuildEntries(AchievementTierMap map) =>
-            map.Entries.Select(e => new ExchangeEntry
+        /// <summary>Builds the exchange entries for every row in <paramref name="map"/>, in file order, with texts resolved for <paramref name="language"/> (an I2 language name; defaults to English).</summary>
+        internal static List<ExchangeEntry> BuildEntries(AchievementTierMap map, string language = null)
+        {
+            language = string.IsNullOrEmpty(language) ? I2Bridge.DefaultLanguage : language;
+            return map.Entries.Select(e =>
             {
-                key = AchievementTierMap.LocId(e.TrophyNumber, e.Tier),
-                displayName = e.DisplayName ?? string.Empty,
-                earnedDescription = string.IsNullOrEmpty(e.EarnedDescription) ? null : e.EarnedDescription,
-                notEarnedDescription = string.IsNullOrEmpty(e.NotEarnedDescription) ? null : e.NotEarnedDescription,
-                points = e.Points,
-                isHidden = e.IsHidden,
-                steamStat = string.IsNullOrEmpty(e.SteamStat) ? null : e.SteamStat,
-                googlePlayId = string.IsNullOrEmpty(e.GooglePlayId) ? null : e.GooglePlayId,
-                appleId = string.IsNullOrEmpty(e.AppleId) ? null : e.AppleId
+                var earned = AchievementTextResolver.Earned(e, language);
+                var notEarned = AchievementTextResolver.NotEarned(e, language);
+                return new ExchangeEntry
+                {
+                    key = AchievementTierMap.LocId(e.TrophyNumber, e.Tier),
+                    displayName = AchievementTextResolver.Name(map, e, language).Text ?? string.Empty,
+                    earnedDescription = string.IsNullOrEmpty(earned.Text) ? null : earned.Text,
+                    notEarnedDescription = string.IsNullOrEmpty(notEarned.Text) ? null : notEarned.Text,
+                    points = e.Points,
+                    isHidden = e.IsHidden,
+                    steamStat = string.IsNullOrEmpty(e.SteamStat) ? null : e.SteamStat,
+                    googlePlayId = string.IsNullOrEmpty(e.GooglePlayId) ? null : e.GooglePlayId,
+                    appleId = string.IsNullOrEmpty(e.AppleId) ? null : e.AppleId
+                };
             }).ToList();
+        }
+
+        /// <summary>BCP-47 style locale for the exchange file from an I2 language name/code. Falls back to "en-US".</summary>
+        internal static string LocaleFor(string language)
+        {
+            var code = I2Bridge.IsAvailable ? I2Bridge.GetLanguageCode(language) : null;
+            if (string.IsNullOrEmpty(code)) return "en-US";
+            if (code.Contains("-")) return code;
+
+            switch (code.ToLowerInvariant())
+            {
+                case "en": return "en-US";
+                case "pt": return "pt-BR";
+                case "de": return "de-DE";
+                case "fr": return "fr-FR";
+                case "es": return "es-ES";
+                case "it": return "it-IT";
+                case "nl": return "nl-NL";
+                case "ru": return "ru-RU";
+                case "pl": return "pl-PL";
+                case "cs": return "cs-CZ";
+                case "ja": return "ja-JP";
+                case "zh": return "zh-CN";
+                default: return code;
+            }
+        }
 
         /// <summary>Serializes <paramref name="map"/> to the exchange JSON text (no file I/O — used directly by tests).</summary>
-        internal static string BuildJson(AchievementTierMap map, string gameName, string locale)
+        internal static string BuildJson(AchievementTierMap map, string gameName, string locale, string language = null)
         {
             var file = new ExchangeFile
             {
                 formatId = FormatId,
                 gameName = gameName,
                 locale = locale,
-                entries = BuildEntries(map)
+                entries = BuildEntries(map, language)
             };
             return JsonUtility.ToJson(file, prettyPrint: true);
         }
 
         /// <summary>"Export for AppDeployHub" button entry point: prompts for a save path and writes the file.</summary>
-        public static void ExportToFile(AchievementTierMap map, string gameName, string locale = "en-US")
+        public static void ExportToFile(AchievementTierMap map, string gameName, string language = null)
         {
             if (map == null || map.Entries == null || map.Entries.Count == 0)
             {
@@ -81,10 +114,11 @@ namespace Wagenheimer.NativeSocial.Editor
                 return;
             }
 
-            var missingNames = map.Entries.Count(e => string.IsNullOrEmpty(e.DisplayName));
+            language = string.IsNullOrEmpty(language) ? I2Bridge.DefaultLanguage : language;
+            var missingNames = map.Entries.Count(e => string.IsNullOrEmpty(AchievementTextResolver.Name(map, e, language).Text));
             if (missingNames > 0 &&
                 !EditorUtility.DisplayDialog("Missing display names",
-                    $"{missingNames} of {map.Entries.Count} entries have no DisplayName set. They will still be " +
+                    $"{missingNames} of {map.Entries.Count} entries have no name (neither an I2 translation in '{language}' nor a literal DisplayName). They will still be " +
                     "exported (with an empty name) — AppDeployHub's import expects one, so fill it in first if possible. Export anyway?",
                     "Export anyway", "Cancel"))
             {
@@ -96,8 +130,8 @@ namespace Wagenheimer.NativeSocial.Editor
             if (string.IsNullOrEmpty(path))
                 return;
 
-            File.WriteAllText(path, BuildJson(map, gameName, locale));
-            Debug.Log($"[NativeSocial] Exported {map.Entries.Count} achievement tier(s) to '{path}' for AppDeployHub import.");
+            File.WriteAllText(path, BuildJson(map, gameName, LocaleFor(language), language));
+            Debug.Log($"[NativeSocial] Exported {map.Entries.Count} achievement tier(s) to '{path}' ({language}) for AppDeployHub import.");
             EditorUtility.RevealInFinder(path);
         }
     }

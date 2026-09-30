@@ -1,6 +1,7 @@
 using System.Linq;
 
 using UnityEditor;
+using UnityEditor.UIElements;
 
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -24,7 +25,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private void BuildUI()
         {
             var headerCard = NativeSocialUIStyle.CreateCard("🏆 Achievement Tier Maps",
-                "Every AchievementTierMap asset in the project and how many of its entries still need a Google Play / Apple ID.");
+                "Edit every trophy tier: texts (from I2 Localization), Steam / Google Play / Apple IDs, points and visibility.");
 
             var btnRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 6 } };
             btnRow.Add(NativeSocialUIStyle.CreateButton("↻ Refresh", Rebuild));
@@ -43,6 +44,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         }
 
         private VisualElement _listContainer;
+        private AchievementTierMap _selectedMap;
 
         private void Rebuild()
         {
@@ -57,48 +59,19 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 return;
             }
 
-            foreach (var map in maps)
+            // One map is the common case: show its editor directly. With several, pick which one to edit.
+            if (_selectedMap == null || !maps.Contains(_selectedMap)) _selectedMap = maps[0];
+
+            if (maps.Count > 1)
             {
-                var path = AssetDatabase.GetAssetPath(map);
-                var card = NativeSocialUIStyle.CreateCard(path, $"{map.Entries.Count} entries.");
-
-                int missingGoogle = map.CountMissingGooglePlay();
-                int missingApple = map.CountMissingApple();
-                int total = map.Entries.Count;
-
-                card.Add(NativeSocialUIStyle.CreateInfoRow("Google Play IDs",
-                    total == 0 ? "no entries" : $"{total - missingGoogle} / {total} filled in",
-                    missingGoogle == 0 && total > 0 ? NativeSocialUIStyle.ColorSuccess : NativeSocialUIStyle.ColorWarning));
-
-                card.Add(NativeSocialUIStyle.CreateInfoRow("Apple Game Center IDs",
-                    total == 0 ? "no entries" : $"{total - missingApple} / {total} filled in",
-                    missingApple == 0 && total > 0 ? NativeSocialUIStyle.ColorSuccess : NativeSocialUIStyle.ColorWarning));
-
-                int steamEntries = map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamStat));
-                card.Add(NativeSocialUIStyle.CreateInfoRow("Steam stats",
-                    total == 0 ? "no entries" : $"{steamEntries} / {total} filled in",
-                    NativeSocialUIStyle.ColorTextMuted));
-
-                var btnRow2 = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 8 } };
-
-                var selectBtn = NativeSocialUIStyle.CreateButton("Select Asset", () =>
-                {
-                    Selection.activeObject = map;
-                    EditorGUIUtility.PingObject(map);
-                });
-                btnRow2.Add(selectBtn);
-
-                var exportBtn = NativeSocialUIStyle.CreateButton("⬆ Export for AppDeployHub", () =>
-                    AchievementExchangeExporter.ExportToFile(map, PlayerSettings.productName), primary: true);
-                exportBtn.style.marginLeft = 8;
-                exportBtn.tooltip = "Writes a JSON file (appdeployhub-achievements/v1) with one entry per trophy tier, " +
-                    "ready to upload in AppDeployHub's Achievements > Import from Unity.";
-                btnRow2.Add(exportBtn);
-
-                card.Add(btnRow2);
-
-                _listContainer.Add(card);
+                var popup = new PopupField<AchievementTierMap>("Map", maps, maps.IndexOf(_selectedMap),
+                    m => AssetDatabase.GetAssetPath(m), m => AssetDatabase.GetAssetPath(m));
+                popup.RegisterValueChangedCallback(e => { _selectedMap = e.newValue; Rebuild(); });
+                popup.style.marginBottom = 8;
+                _listContainer.Add(popup);
             }
+
+            _listContainer.Add(new AchievementMapEditorView(_selectedMap).Root);
         }
     }
 }

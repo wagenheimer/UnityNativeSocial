@@ -29,7 +29,16 @@ namespace Wagenheimer.NativeSocial
         [Tooltip("Apple Game Center achievement ID for this tier (from App Store Connect), or empty until that console listing exists.")]
         public string AppleId;
 
-        [Tooltip("Player-facing display name for this tier (e.g. from your localization system). Only used by the \"Export for AppDeployHub\" button — not read by NativeSocial itself.")]
+        [Tooltip("I2 Localization term holding this trophy's NAME (normally shared by all its tiers — the tier numeral I/II/III is appended automatically). Default: \"trophy{N}\". Empty = use the literal DisplayName below.")]
+        public string NameTerm;
+
+        [Tooltip("I2 Localization term for the text shown once this tier is earned. Empty = use the literal EarnedDescription below. The Achievements tab can generate missing terms for you.")]
+        public string EarnedDescriptionTerm;
+
+        [Tooltip("I2 Localization term for the hint/goal text shown before this tier is earned. Empty = use the literal NotEarnedDescription below.")]
+        public string NotEarnedDescriptionTerm;
+
+        [Tooltip("Literal fallback name for this tier, used only when NameTerm is empty or I2 Localization isn't available. Only used by the \"Export for AppDeployHub\" button — not read by NativeSocial itself.")]
         public string DisplayName;
 
         [Tooltip("Player-facing description shown once the achievement is earned. Only used by the \"Export for AppDeployHub\" button.")]
@@ -60,6 +69,40 @@ namespace Wagenheimer.NativeSocial
     public class AchievementTierMap : ScriptableObject
     {
         public List<AchievementTierEntry> Entries = new List<AchievementTierEntry>();
+
+        [Tooltip("When a name comes from an I2 term shared by all tiers of a trophy, append the tier numeral (I, II, III) so each tier is a distinct achievement on the stores. Ignored for a trophy with a single tier.")]
+        public bool AppendTierNumeral = true;
+
+        /// <summary>Default I2 term for a trophy's name (shared by its tiers), matching the convention <c>trophy{N}</c>.</summary>
+        public static string DefaultNameTerm(int trophyNumber) => $"trophy{trophyNumber}";
+
+        /// <summary>Default I2 term generated for a tier's "earned" text.</summary>
+        public static string DefaultEarnedTerm(int trophyNumber, int tier) => $"Achievements/Trophy{trophyNumber}_{tier}/Earned";
+
+        /// <summary>Default I2 term generated for a tier's "not earned yet" hint text.</summary>
+        public static string DefaultNotEarnedTerm(int trophyNumber, int tier) => $"Achievements/Trophy{trophyNumber}_{tier}/NotEarned";
+
+        /// <summary>1 → "I", 2 → "II", 4 → "IV"... Falls back to the plain number above 3999 or for values below 1.</summary>
+        public static string RomanNumeral(int value)
+        {
+            if (value < 1 || value > 3999) return value.ToString();
+
+            int[] values = { 1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1 };
+            string[] symbols = { "M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I" };
+            var result = new System.Text.StringBuilder();
+            for (int i = 0; i < values.Length; i++)
+            {
+                while (value >= values[i])
+                {
+                    value -= values[i];
+                    result.Append(symbols[i]);
+                }
+            }
+            return result.ToString();
+        }
+
+        /// <summary>How many tiers the given trophy has in this map.</summary>
+        public int TierCount(int trophyNumber) => Entries.Count(e => e.TrophyNumber == trophyNumber);
 
         /// <summary>
         /// The canonical <c>NativeSocial</c> LocId for one tier, shared by every map built from this asset and

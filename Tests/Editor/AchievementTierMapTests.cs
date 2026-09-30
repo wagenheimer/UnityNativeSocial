@@ -29,6 +29,52 @@ namespace Wagenheimer.NativeSocial.Tests
             Assert.AreEqual("Trophy1_1", AchievementTierMap.LocId(1, 1));
         }
 
+        [TestCase(1, "I")]
+        [TestCase(2, "II")]
+        [TestCase(3, "III")]
+        [TestCase(4, "IV")]
+        [TestCase(9, "IX")]
+        [TestCase(14, "XIV")]
+        [TestCase(1994, "MCMXCIV")]
+        public void RomanNumeral_ConvertsKnownValues(int value, string expected)
+        {
+            Assert.AreEqual(expected, AchievementTierMap.RomanNumeral(value));
+        }
+
+        [TestCase(0)]
+        [TestCase(-3)]
+        [TestCase(4000)]
+        public void RomanNumeral_FallsBackToPlainNumber_OutsideSupportedRange(int value)
+        {
+            Assert.AreEqual(value.ToString(), AchievementTierMap.RomanNumeral(value));
+        }
+
+        [Test]
+        public void DefaultTermKeys_FollowTheConvention()
+        {
+            Assert.AreEqual("trophy4", AchievementTierMap.DefaultNameTerm(4));
+            Assert.AreEqual("Achievements/Trophy4_3/Earned", AchievementTierMap.DefaultEarnedTerm(4, 3));
+            Assert.AreEqual("Achievements/Trophy4_3/NotEarned", AchievementTierMap.DefaultNotEarnedTerm(4, 3));
+        }
+
+        [Test]
+        public void TierCount_CountsOnlyTheRequestedTrophy()
+        {
+            _map.Entries.Add(new AchievementTierEntry { TrophyNumber = 1, Tier = 1 });
+            _map.Entries.Add(new AchievementTierEntry { TrophyNumber = 1, Tier = 2 });
+            _map.Entries.Add(new AchievementTierEntry { TrophyNumber = 2, Tier = 1 });
+
+            Assert.AreEqual(2, _map.TierCount(1));
+            Assert.AreEqual(1, _map.TierCount(2));
+            Assert.AreEqual(0, _map.TierCount(99));
+        }
+
+        [Test]
+        public void AppendTierNumeral_DefaultsToTrue_ForOldAssets()
+        {
+            Assert.IsTrue(_map.AppendTierNumeral);
+        }
+
         [Test]
         public void TryGetEntry_FindsMatchingTrophyAndTier()
         {
