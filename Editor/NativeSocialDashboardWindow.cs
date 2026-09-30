@@ -38,7 +38,7 @@ namespace Wagenheimer.NativeSocial.Editor
         {
             var window = GetWindow<NativeSocialDashboardWindow>("Native Social");
             window.minSize = new Vector2(760, 520);
-            window.titleContent = new GUIContent("Native Social", EditorGUIUtility.IconContent("d_SocialNetworks").image);
+            window.titleContent = new GUIContent("Native Social", FindIcon());
             window._currentTab = tab;
             window.Show();
             if (window._root != null) window.RebuildUI();
@@ -158,6 +158,17 @@ namespace Wagenheimer.NativeSocial.Editor
                 Debug.LogWarning($"[NativeSocial] Could not read package version: {ex.Message}");
             }
             return "?";
+        }
+
+        /// <summary>A built-in icon that exists on this Unity version; FindTexture returns null instead of logging when one is missing.</summary>
+        private static Texture FindIcon()
+        {
+            foreach (var name in new[] { "d_BuildSettings.Standalone.Small", "BuildSettings.Standalone.Small", "d_UnityEditor.ConsoleWindow" })
+            {
+                var icon = EditorGUIUtility.FindTexture(name);
+                if (icon != null) return icon;
+            }
+            return null;
         }
     }
 }
