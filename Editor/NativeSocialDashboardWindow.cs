@@ -32,6 +32,10 @@ namespace Wagenheimer.NativeSocial.Editor
         [MenuItem("Tools/Wagenheimer/Native Social/Dashboard...", priority = 0)]
         public static void OpenDashboard() => Open(Tab.SetupAudit);
 
+        public static void ShowWindow() => Open(Tab.SetupAudit);
+
+        public static void Open() => Open(Tab.SetupAudit);
+
         public static void OpenAuditTab() => Open(Tab.SetupAudit);
 
         public static void Open(Tab tab)
@@ -40,8 +44,55 @@ namespace Wagenheimer.NativeSocial.Editor
             window.minSize = new Vector2(760, 520);
             window.titleContent = new GUIContent("Native Social", FindIcon());
             window._currentTab = tab;
+            EnsureWindowOnScreen(window);
             window.Show();
+            window.Focus();
             if (window._root != null) window.RebuildUI();
+        }
+
+        private static void EnsureWindowOnScreen(EditorWindow window)
+        {
+            Rect host;
+            try
+            {
+                host = EditorGUIUtility.GetMainWindowPosition();
+            }
+            catch
+            {
+                return;
+            }
+
+            if (host.width < 1f || host.height < 1f)
+                return;
+
+            var rect = window.position;
+
+            var degenerate = float.IsNaN(rect.x) || float.IsNaN(rect.y) ||
+                             float.IsInfinity(rect.x) || float.IsInfinity(rect.y) ||
+                             rect.width < 50f || rect.height < 50f;
+
+            const float margin = 40f;
+            var overlaps = rect.xMax > host.x + margin &&
+                           rect.yMax > host.y + margin &&
+                           rect.x < host.xMax - margin &&
+                           rect.y < host.yMax - margin;
+
+            if (!degenerate && overlaps)
+                return;
+
+            const float defaultWidth = 840f;
+            const float defaultHeight = 600f;
+            var width = degenerate ? defaultWidth : rect.width;
+            var height = degenerate ? defaultHeight : rect.height;
+
+            width = Mathf.Clamp(width, 760f, Mathf.Max(760f, host.width - 40f));
+            height = Mathf.Clamp(height, 520f, Mathf.Max(520f, host.height - 40f));
+
+            window.position = new Rect(
+                Mathf.Round(host.x + (host.width - width) * 0.5f),
+                Mathf.Round(host.y + (host.height - height) * 0.5f),
+                Mathf.Round(width),
+                Mathf.Round(height));
         }
 
         public void CreateGUI()
