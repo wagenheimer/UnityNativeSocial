@@ -52,6 +52,12 @@ namespace Wagenheimer.NativeSocial
 
         [Tooltip("Hidden until earned, on Google Play / Apple Game Center. Only used by the \"Export for AppDeployHub\" button.")]
         public bool IsHidden;
+
+        [Tooltip("Whether this achievement is incremental (counter/progress steps) on Google Play Games.")]
+        public bool IsIncremental;
+
+        [Tooltip("Number of steps to unlock this achievement if IsIncremental is true (Google Play Games).")]
+        public int StepsToUnlock;
     }
 
     /// <summary>

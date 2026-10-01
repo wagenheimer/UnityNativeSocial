@@ -165,6 +165,8 @@ namespace Wagenheimer.NativeSocial.Editor
             public string notEarnedDescription;
             public int points;
             public bool isHidden;
+            public bool isIncremental;
+            public int stepsToUnlock;
             public string steamStat;
             public string googlePlayId;
             public string appleId;

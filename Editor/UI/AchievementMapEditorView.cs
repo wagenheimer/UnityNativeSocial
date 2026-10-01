@@ -591,6 +591,12 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                         gcUpdated++;
                                         changed = true;
                                     }
+                                    if (match.isIncremental && (!entry.IsIncremental || entry.StepsToUnlock != match.stepsToUnlock))
+                                    {
+                                        entry.IsIncremental = true;
+                                        entry.StepsToUnlock = match.stepsToUnlock;
+                                        changed = true;
+                                    }
                                     if (changed)
                                     {
                                         _map.Entries[i] = entry;

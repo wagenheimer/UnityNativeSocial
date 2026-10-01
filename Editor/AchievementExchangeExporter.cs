@@ -39,6 +39,8 @@ namespace Wagenheimer.NativeSocial.Editor
             public string notEarnedDescription;
             public int points;
             public bool isHidden;
+            public bool isIncremental;
+            public int stepsToUnlock;
             public string steamStat;
             public string googlePlayId;
             public string appleId;
@@ -73,6 +75,8 @@ namespace Wagenheimer.NativeSocial.Editor
                     notEarnedDescription = string.IsNullOrEmpty(notEarned.Text) ? null : notEarned.Text,
                     points = e.Points,
                     isHidden = e.IsHidden,
+                    isIncremental = e.IsIncremental,
+                    stepsToUnlock = e.StepsToUnlock,
                     steamStat = string.IsNullOrEmpty(e.SteamStat) ? null : e.SteamStat,
                     googlePlayId = string.IsNullOrEmpty(e.GooglePlayId) ? null : e.GooglePlayId,
                     appleId = string.IsNullOrEmpty(e.AppleId) ? null : e.AppleId
