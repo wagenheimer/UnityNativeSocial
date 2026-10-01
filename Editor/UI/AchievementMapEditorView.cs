@@ -60,10 +60,11 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             RebuildHubCard();
             _summary = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, marginBottom = 8 } };
             Root.Add(_summary);
+            Root.Add(BuildPointsCard());
             _list = new VisualElement();
             Root.Add(_list);
 
-            Root.TrackSerializedObjectValue(_so, _ => { RefreshSummary(); foreach (var update in _rowUpdaters) update(); });
+            Root.TrackSerializedObjectValue(_so, _ => { RefreshSummary(); RefreshPointsStatus(); foreach (var update in _rowUpdaters) update(); });
             Root.schedule.Execute(() => { if (_dirtyLabel != null) _dirtyLabel.style.display = EditorUtility.IsDirty(_map) ? DisplayStyle.Flex : DisplayStyle.None; }).Every(400);
 
             Refresh();
@@ -100,6 +101,19 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 }
             }
             card.Add(filters);
+
+            if (I2Bridge.IsAvailable)
+            {
+                var sourceRow = Row();
+                var refreshI2 = NativeSocialUIStyle.CreateButton("↻ Refresh from I2", () => { _language = I2Bridge.GetLanguages().Contains(_language) ? _language : I2Bridge.DefaultLanguage; Refresh(); });
+                refreshI2.tooltip = "Texts are read live from I2 Localization every time this list is drawn. Press this after editing terms in the I2 window to redraw the list with the current values.";
+                sourceRow.Add(refreshI2);
+                sourceRow.Add(new Label($"Texts come from I2 Localization ({I2Bridge.GetLanguages().Count} languages), showing \"{_language}\". Each line ends with the term it was read from; [literal] means the typed fallback was used.")
+                {
+                    style = { flexShrink = 1, flexGrow = 1, whiteSpace = WhiteSpace.Normal, marginLeft = 8, fontSize = 10, color = NativeSocialUIStyle.ColorTextMuted }
+                });
+                card.Add(sourceRow);
+            }
 
             var chips = Row();
             void AddChip(string label, Filter filter)
@@ -498,7 +512,96 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 });
         }
 
+        // ── Points ───────────────────────────────────────────────────────────────
+
+        private VisualElement _pointsStatus;
+        private int _pointsTarget = AchievementPointsRules.StoreTotalLimit;
+
+        private VisualElement BuildPointsCard()
+        {
+            var card = NativeSocialUIStyle.CreateCard("⭐ Points",
+                "Google Play and Apple Game Center both cap the SUM of all achievements' points at 1000. Apple also wants 1-100 per achievement and Google Play a multiple of 5. Steam has no points.");
+            _pointsStatus = new VisualElement();
+            card.Add(_pointsStatus);
+
+            var row = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 6 } };
+            var target = new IntegerField("Total to distribute") { value = _pointsTarget, style = { minWidth = 220 } };
+            target.tooltip = "The budget split across every tier. Both stores accept at most 1000.";
+            target.RegisterValueChangedCallback(e => _pointsTarget = Mathf.Clamp(e.newValue, 5, AchievementPointsRules.StoreTotalLimit));
+            target.RegisterCallback<FocusOutEvent>(_ => target.SetValueWithoutNotify(_pointsTarget));
+            row.Add(target);
+            var distribute = NativeSocialUIStyle.CreateButton("⚖ Auto-distribute points…", DistributePoints, primary: true);
+            distribute.tooltip = "Computes new points for every tier so the total fits the budget (multiples of 5, 5-100 each). You see a preview first and can undo with Ctrl+Z.";
+            row.Add(distribute);
+            card.Add(row);
+
+            RefreshPointsStatus();
+            return card;
+        }
+
+        private void RefreshPointsStatus()
+        {
+            if (_pointsStatus == null) return;
+            _pointsStatus.Clear();
+            var points = _map.Entries.Select(e => e.Points).ToList();
+            if (points.Count == 0) return;
+
+            var total = points.Sum();
+            var byTier = _map.Entries.GroupBy(e => e.Tier).OrderBy(g => g.Key)
+                .Select(g => $"{AchievementTierMap.RomanNumeral(g.Key)}: {g.Count()} × {(g.Min(e => e.Points) == g.Max(e => e.Points) ? g.First().Points.ToString() : $"{g.Min(e => e.Points)}-{g.Max(e => e.Points)}")} = {g.Sum(e => e.Points)}");
+            var problem = AchievementPointsRules.Validate(points);
+
+            _pointsStatus.Add(new Label($"Total {total} / {AchievementPointsRules.StoreTotalLimit} points over {points.Count} tiers   ·   per tier  {string.Join("   |   ", byTier)}")
+            {
+                style = { whiteSpace = WhiteSpace.Normal, color = problem == null ? NativeSocialUIStyle.ColorSuccess : NativeSocialUIStyle.ColorWarning }
+            });
+            if (problem != null)
+                _pointsStatus.Add(NativeSocialUIStyle.CreateCallout("The stores would reject this: " + problem + ". Use \"Auto-distribute points\" to fix it.", AuditSeverity.Warning));
+        }
+
+        private void DistributePoints()
+        {
+            if (_map.Entries.Count == 0) return;
+
+            var choice = EditorUtility.DisplayDialogComplex("Auto-distribute points",
+                $"Split {_pointsTarget} points over {_map.Entries.Count} tiers.\n\n" +
+                "• Scale current: keeps today's proportions between tiers.\n" +
+                "• By tier: higher tiers are worth more (I : II : III = 1 : 2 : 3), all trophies equal.\n\n" +
+                "Every value becomes a multiple of 5 between 5 and 100. You'll see a preview before anything changes.",
+                "Scale current", "Cancel", "By tier");
+            if (choice == 1) return;
+
+            var weights = _map.Entries.Select(e => choice == 0 ? (double)Mathf.Max(1, e.Points) : Mathf.Max(1, e.Tier)).ToList();
+            var result = AchievementPointsDistributor.Distribute(weights, _pointsTarget);
+
+            var changed = Enumerable.Range(0, result.Length).Where(i => result[i] != _map.Entries[i].Points).ToList();
+            if (changed.Count == 0)
+            {
+                EditorUtility.DisplayDialog("Auto-distribute points", "Nothing to change: the points already match this distribution.", "OK");
+                return;
+            }
+
+            var preview = string.Join("\n", changed.Take(8).Select(i => $"• Trophy {_map.Entries[i].TrophyNumber} {AchievementTierMap.RomanNumeral(_map.Entries[i].Tier)}: {_map.Entries[i].Points} → {result[i]}"));
+            if (changed.Count > 8) preview += $"\n… and {changed.Count - 8} more";
+            if (!EditorUtility.DisplayDialog("Apply new points?",
+                    $"Total {_map.Entries.Sum(e => e.Points)} → {result.Sum()} ({changed.Count} tier(s) change).\n\n{preview}", "Apply", "Cancel")) return;
+
+            Undo.RecordObject(_map, "Auto-distribute achievement points");
+            for (int i = 0; i < result.Length; i++)
+            {
+                var entry = _map.Entries[i];
+                entry.Points = result[i];
+                _map.Entries[i] = entry;
+            }
+            EditorUtility.SetDirty(_map);
+            Refresh();
+        }
+
         // ── Summary ──────────────────────────────────────────────────────────────
+
+        private const string SteamHelp = "Steam: the achievement's API name (\"SteamStat\"). Set it so Steam can unlock this tier.";
+        private const string GoogleHelp = "Google Play: the achievement ID Google assigns (looks like CgkI...). Amber just means this tier has none yet - Google creates the ID when the achievement is published in Play Console (push it from AppDeployHub), then it can be filled in here.";
+        private const string AppleHelp = "Apple Game Center: the achievement ID of this tier in App Store Connect. Amber just means none is linked yet - it is created when you push from AppDeployHub.";
 
         private void RefreshSummary()
         {
@@ -506,10 +609,11 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             int total = _map.Entries.Count;
             int trophies = _map.Entries.Select(e => e.TrophyNumber).Distinct().Count();
 
-            void Add(string label, int count)
+            void Add(string label, int count, string tooltip)
             {
                 var severity = total > 0 && count == total ? AuditSeverity.Pass : AuditSeverity.Warning;
                 var badge = NativeSocialUIStyle.CreateBadge($"{label} {count}/{total}", severity);
+                badge.tooltip = tooltip + (count == total ? "\n\nGreen: every tier is done." : "\n\nAmber: still to do for some tiers - not an error, nothing is broken.");
                 badge.style.marginRight = 6;
                 badge.style.marginBottom = 4;
                 _summary.Add(badge);
@@ -520,16 +624,21 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             info.style.marginBottom = 4;
             _summary.Add(info);
 
-            Add("Steam", _map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamStat)));
-            Add("Google Play", _map.Entries.Count(e => !string.IsNullOrEmpty(e.GooglePlayId)));
-            Add("Apple", _map.Entries.Count(e => !string.IsNullOrEmpty(e.AppleId)));
+            Add("Steam", _map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamStat)), SteamHelp);
+            Add("Google Play", _map.Entries.Count(e => !string.IsNullOrEmpty(e.GooglePlayId)), GoogleHelp);
+            Add("Apple", _map.Entries.Count(e => !string.IsNullOrEmpty(e.AppleId)), AppleHelp);
 
             if (I2Bridge.IsAvailable)
             {
-                Add("I2 names", _map.Entries.Count(e => I2Bridge.TermExists(e.NameTerm)));
-                Add("I2 earned", _map.Entries.Count(e => I2Bridge.TermExists(e.EarnedDescriptionTerm)));
-                Add("I2 not earned", _map.Entries.Count(e => I2Bridge.TermExists(e.NotEarnedDescriptionTerm)));
+                Add("I2 names", _map.Entries.Count(e => I2Bridge.TermExists(e.NameTerm)), "Tiers whose NAME term exists in I2 Localization.");
+                Add("I2 earned", _map.Entries.Count(e => I2Bridge.TermExists(e.EarnedDescriptionTerm)), "Tiers whose EARNED description term exists in I2 Localization.");
+                Add("I2 not earned", _map.Entries.Count(e => I2Bridge.TermExists(e.NotEarnedDescriptionTerm)), "Tiers whose NOT-EARNED description term exists in I2 Localization.");
             }
+
+            _summary.Add(new Label("green = done  ·  amber = still to do (not an error). Hover any badge to see what it means.")
+            {
+                style = { flexBasis = new Length(100, LengthUnit.Percent), fontSize = 10, color = NativeSocialUIStyle.ColorTextMuted }
+            });
         }
 
         // ── List ─────────────────────────────────────────────────────────────────
@@ -538,6 +647,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             _so.Update();
             RefreshSummary();
+            RefreshPointsStatus();
             RebuildList();
         }
 
@@ -677,24 +787,28 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
                 tierLabel.text = AchievementTierMap.RomanNumeral(e.Tier);
                 nameLabel.text = $"{(string.IsNullOrEmpty(name.Text) ? "(no name)" : name.Text)}   ·   {e.Points} pts{(e.IsHidden ? "   ·   hidden" : string.Empty)}";
-                StyleText(earnedLabel, "✔ Earned: ", earned);
-                StyleText(notEarnedLabel, "○ Not earned: ", notEarned);
+                StyleText(earnedLabel, "✔ Earned: ", earned, _language);
+                StyleText(notEarnedLabel, "○ Not earned: ", notEarned, _language);
+                nameLabel.tooltip = SourceTooltip(name, _language);
 
                 chipCol.Clear();
-                chipCol.Add(Chip("Steam", !string.IsNullOrEmpty(e.SteamStat)));
-                chipCol.Add(Chip("Google", !string.IsNullOrEmpty(e.GooglePlayId)));
-                chipCol.Add(Chip("Apple", !string.IsNullOrEmpty(e.AppleId)));
+                chipCol.Add(Chip("Steam", e.SteamStat, SteamHelp));
+                chipCol.Add(Chip("Google", e.GooglePlayId, GoogleHelp));
+                chipCol.Add(Chip("Apple", e.AppleId, AppleHelp));
                 if (I2Bridge.IsAvailable)
                 {
                     int i2 = I2Status(e);
                     var badge = NativeSocialUIStyle.CreateBadge($"I2 {i2}/3", i2 == 3 ? AuditSeverity.Pass : AuditSeverity.Warning);
-                    badge.tooltip = "How many of name / earned / not-earned resolve from a real I2 term.";
+                    badge.tooltip = $"How many of name / earned / not-earned resolve from a real I2 term (this tier uses: {Describe(e.NameTerm)}, {Describe(e.EarnedDescriptionTerm)}, {Describe(e.NotEarnedDescriptionTerm)}).\nAmber = some text still comes from the literal fallback fields or is missing. Use \"Generate missing I2 terms\".";
                     badge.style.marginLeft = 4;
                     chipCol.Add(badge);
                 }
 
                 var complete = !string.IsNullOrEmpty(e.SteamStat) && !string.IsNullOrEmpty(e.GooglePlayId) && !string.IsNullOrEmpty(e.AppleId);
                 row.style.borderLeftColor = complete ? NativeSocialUIStyle.ColorSuccess : NativeSocialUIStyle.ColorWarning;
+                row.tooltip = complete
+                    ? "Linked on Steam, Google Play and Apple."
+                    : "Still to link: " + string.Join(", ", new[] { string.IsNullOrEmpty(e.SteamStat) ? "Steam" : null, string.IsNullOrEmpty(e.GooglePlayId) ? "Google Play" : null, string.IsNullOrEmpty(e.AppleId) ? "Apple" : null }.Where(x => x != null)) + ". (Orange bar = not an error, just not finished.)";
             }
 
             Update();
@@ -702,8 +816,18 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             return container;
         }
 
-        private static void StyleText(Label label, string prefix, ResolvedText text)
+        /// <summary>Where a shown text came from, spelled out for the hover tooltip.</summary>
+        private static string SourceTooltip(ResolvedText text, string language) => text.Source switch
         {
+            TextSource.I2 => $"Read live from I2 Localization: term \"{text.Term}\", language {language}. Edit it in I2 and press \"Refresh from I2\".",
+            TextSource.Literal when text.TermUnresolved => $"Literal fallback text typed on this tier: I2 term \"{text.Term}\" has no {language} translation (or doesn't exist). Use \"Generate missing I2 terms\".",
+            TextSource.Literal => "Literal fallback text typed on this tier (no I2 term set, or I2 not installed).",
+            _ => string.IsNullOrEmpty(text.Term) ? "No text: no I2 term and no literal fallback." : $"No text: I2 term \"{text.Term}\" has no {language} translation and there is no literal fallback."
+        };
+
+        private static void StyleText(Label label, string prefix, ResolvedText text, string language)
+        {
+            label.tooltip = SourceTooltip(text, language);
             if (text.Source == TextSource.Missing)
             {
                 label.text = prefix + "(missing)";
@@ -711,13 +835,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 return;
             }
 
-            label.text = prefix + text.Text + (text.Source == TextSource.Literal && text.TermUnresolved ? "   [literal — term has no translation]" : text.Source == TextSource.Literal ? "   [literal]" : string.Empty);
+            label.text = prefix + text.Text + (text.Source == TextSource.Literal && text.TermUnresolved ? "   [literal — term has no translation]" : text.Source == TextSource.Literal ? "   [literal]" : $"   [I2: {text.Term}]");
             label.style.color = text.Source == TextSource.I2 ? NativeSocialUIStyle.ColorTextMuted : NativeSocialUIStyle.ColorWarning;
         }
 
-        private static Label Chip(string name, bool ok)
+        private static string Describe(string term) => string.IsNullOrEmpty(term) ? "(no term)" : I2Bridge.TermExists(term) ? term : term + " (not in I2)";
+
+        private static Label Chip(string name, string id, string help)
         {
+            var ok = !string.IsNullOrEmpty(id);
             var badge = NativeSocialUIStyle.CreateBadge($"{name} {(ok ? "✔" : "✘")}", ok ? AuditSeverity.Pass : AuditSeverity.Warning);
+            badge.tooltip = ok ? $"{name} ID: {id}" : help;
             badge.style.marginLeft = 4;
             badge.style.marginBottom = 2;
             return badge;
