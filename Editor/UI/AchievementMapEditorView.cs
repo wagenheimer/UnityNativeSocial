@@ -564,25 +564,38 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 int totalEntries = _map.Entries.Count;
 
                 Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> <b>Pull Concluído</b> de {targets.Count} app(s):\n" +
-                          $" • Google Play IDs atualizados: {gpUpdated} (Total preenchido: {totalEntries - missingGp}/{totalEntries})\n" +
-                          $" • Apple IDs atualizados: {gcUpdated} (Total preenchido: {totalEntries - missingGc}/{totalEntries})");
+                          $" • Google Play IDs (Android): {totalEntries - missingGp}/{totalEntries} preenchidos (+{gpUpdated} atualizados)\n" +
+                          $" • Apple Game Center IDs (iOS/macOS): {totalEntries - missingGc}/{totalEntries} preenchidos (+{gcUpdated} atualizados)");
 
                 if (missingGp > 0)
                 {
                     var missingNames = _map.Entries.Where(e => string.IsNullOrEmpty(e.GooglePlayId))
                         .Select(e => $"{AchievementTierMap.LocId(e.TrophyNumber, e.Tier)} ({e.DisplayName})");
-                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ <b>{missingGp} conquista(s) continuam sem GooglePlayId:</b>\n" +
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ <b>{missingGp} conquista(s) sem GooglePlayId:</b>\n" +
                                      string.Join(", ", missingNames) +
                                      "\n\n<i>Dica: Se você importou o CSV/ZIP no Google Play Console, clique em 'Sincronizar Google Play' na página do jogo no AppDeployHub web para que ele importe os IDs gerados pelo Google e possa enviá-los ao Unity.</i>");
                 }
 
+                if (missingGc > 0)
+                {
+                    var missingNames = _map.Entries.Where(e => string.IsNullOrEmpty(e.AppleId))
+                        .Select(e => $"{AchievementTierMap.LocId(e.TrophyNumber, e.Tier)} ({e.DisplayName})");
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ <b>{missingGc} conquista(s) sem Apple Game Center ID:</b>\n" +
+                                     string.Join(", ", missingNames) +
+                                     "\n\n<i>Dica: Assegure-se de que o ID do Game Center está cadastrado no App Store Connect e no AppDeployHub.</i>");
+                }
+
                 string summaryMsg = $"Sincronização concluída com sucesso de {targets.Count} app(s)!\n\n" +
-                                   $"• Google Play IDs atualizados: {gpUpdated} (Atual no projeto: {totalEntries - missingGp}/{totalEntries})\n" +
-                                   $"• Apple IDs atualizados: {gcUpdated} (Atual no projeto: {totalEntries - missingGc}/{totalEntries})";
+                                   $"• Google Play IDs (Android): {totalEntries - missingGp}/{totalEntries} (novos: +{gpUpdated})\n" +
+                                   $"• Apple IDs (iOS/macOS): {totalEntries - missingGc}/{totalEntries} (novos: +{gcUpdated})";
 
                 if (missingGp > 0)
                 {
-                    summaryMsg += $"\n\n⚠ Atenção: {missingGp} conquista(s) continuam sem ID do Google Play. Verifique o console do Unity para ver a lista das conquistas pendentes e sincronize no AppDeployHub web.";
+                    summaryMsg += $"\n\n⚠ Atenção: {missingGp} conquista(s) continuam sem ID do Google Play (Android).";
+                }
+                if (missingGc > 0)
+                {
+                    summaryMsg += $"\n\n⚠ Atenção: {missingGc} conquista(s) continuam sem ID da Apple (Game Center).";
                 }
 
                 EditorUtility.DisplayDialog("AppDeployHub - Pull", summaryMsg, "OK");
@@ -601,18 +614,31 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         var file = AppDeployHubClient.ParseExchangeFile(response.Body);
                         if (file?.entries != null)
                         {
+                            bool isAndroid = string.Equals(target.platform, "Android", StringComparison.OrdinalIgnoreCase);
+                            bool isApple = string.Equals(target.platform, "iOS", StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(target.platform, "MacOS", StringComparison.OrdinalIgnoreCase);
+                            bool isUniversal = string.Equals(target.platform, "Universal", StringComparison.OrdinalIgnoreCase);
+
                             int hubTotal = file.entries.Length;
                             int hubWithGp = file.entries.Count(e => !string.IsNullOrEmpty(e.googlePlayId));
                             int hubWithGc = file.entries.Count(e => !string.IsNullOrEmpty(e.appleId));
 
-                            Debug.Log($"<color=#2196F3><b>[NativeSocial]</b></color> AppDeployHub retornou {hubTotal} achievements para '{target.name}':\n" +
-                                      $" • Com GooglePlayId: {hubWithGp}/{hubTotal}\n" +
-                                      $" • Com AppleId: {hubWithGc}/{hubTotal}");
+                            string platformDetail = isAndroid ? $" • Google Play IDs (Android): {hubWithGp}/{hubTotal}" :
+                                                    isApple ? $" • Apple Game Center IDs (iOS/macOS): {hubWithGc}/{hubTotal}" :
+                                                    $" • Google Play IDs (Android): {hubWithGp}/{hubTotal}\n • Apple Game Center IDs (iOS/macOS): {hubWithGc}/{hubTotal}";
 
-                            if (hubWithGp < hubTotal)
+                            Debug.Log($"<color=#2196F3><b>[NativeSocial]</b></color> AppDeployHub retornou {hubTotal} achievements para <b>{target.name}</b> [{target.platform}]:\n{platformDetail}");
+
+                            if ((isAndroid || isUniversal) && hubWithGp < hubTotal)
                             {
                                 var missingOnHub = file.entries.Where(e => string.IsNullOrEmpty(e.googlePlayId)).Select(e => e.key);
                                 Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> No AppDeployHub (app '{target.name}'), {hubTotal - hubWithGp} achievements estão sem ExternalId do Google Play no servidor:\n" +
+                                                 string.Join(", ", missingOnHub));
+                            }
+                            if ((isApple || isUniversal) && hubWithGc < hubTotal)
+                            {
+                                var missingOnHub = file.entries.Where(e => string.IsNullOrEmpty(e.appleId)).Select(e => e.key);
+                                Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> No AppDeployHub (app '{target.name}'), {hubTotal - hubWithGc} achievements estão sem ExternalId da Apple (Game Center) no servidor:\n" +
                                                  string.Join(", ", missingOnHub));
                             }
 
@@ -627,20 +653,31 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                 if (match != null)
                                 {
                                     bool changed = false;
+
+                                    // Atualiza Google Play ID (prioritário se Android/Universal, ou fallback se Apple tiver)
                                     if (!string.IsNullOrEmpty(match.googlePlayId) && entry.GooglePlayId != match.googlePlayId)
                                     {
-                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
-                                        entry.GooglePlayId = match.googlePlayId;
-                                        gpUpdated++;
-                                        changed = true;
+                                        if (!isApple || string.IsNullOrEmpty(entry.GooglePlayId))
+                                        {
+                                            Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
+                                            entry.GooglePlayId = match.googlePlayId;
+                                            gpUpdated++;
+                                            changed = true;
+                                        }
                                     }
+
+                                    // Atualiza Apple Game Center ID (prioritário se Apple/Universal, ou fallback se Android tiver)
                                     if (!string.IsNullOrEmpty(match.appleId) && entry.AppleId != match.appleId)
                                     {
-                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
-                                        entry.AppleId = match.appleId;
-                                        gcUpdated++;
-                                        changed = true;
+                                        if (!isAndroid || string.IsNullOrEmpty(entry.AppleId))
+                                        {
+                                            Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
+                                            entry.AppleId = match.appleId;
+                                            gcUpdated++;
+                                            changed = true;
+                                        }
                                     }
+
                                     if (match.isIncremental && (!entry.IsIncremental || entry.StepsToUnlock != match.stepsToUnlock))
                                     {
                                         entry.IsIncremental = true;
