@@ -388,10 +388,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             card.Add(pushGp);
             card.Add(pushGc);
 
+            var btnRow = new VisualElement { style = { flexDirection = FlexDirection.Row, flexWrap = Wrap.Wrap, alignItems = Align.Center, marginTop = 8 } };
             var sendBtn = NativeSocialUIStyle.CreateButton("☁ Send to AppDeployHub", null, primary: true);
-            sendBtn.style.marginTop = 8;
             sendBtn.clicked += () => SendToAppDeployHub(sendBtn);
-            card.Add(sendBtn);
+            btnRow.Add(sendBtn);
+
+            var pullBtn = NativeSocialUIStyle.CreateButton("⬇ Pull from AppDeployHub", null);
+            pullBtn.tooltip = "Pulls achievement definitions from AppDeployHub and updates this map with store-generated IDs (Google Play ID and Apple ID).";
+            pullBtn.clicked += () => PullFromAppDeployHub(pullBtn);
+            btnRow.Add(pullBtn);
+
+            card.Add(btnRow);
         }
 
         private bool _pickerOpen;
@@ -509,6 +516,102 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         return;
                     }
                     SendNext(targets, index + 1, json, sendBtn, report);
+                });
+        }
+
+        private void PullFromAppDeployHub(Button pullBtn)
+        {
+            if (_hubBusy) return;
+
+            var targets = _hubApps.Where(a => AppDeployHubSettings.AppIds.Contains(a.id)).ToList();
+            if (targets.Count == 0)
+            {
+                EditorUtility.DisplayDialog("AppDeployHub", "Tick at least one app first (use \"Refresh apps\" if the list is empty).", "OK");
+                return;
+            }
+
+            _hubBusy = true;
+            pullBtn.SetEnabled(false);
+            pullBtn.text = "Pulling…";
+            PullNext(targets, 0, pullBtn, 0, 0);
+        }
+
+        private void PullNext(List<AppDeployHubClient.AppSummary> targets, int index, Button pullBtn, int gpUpdated, int gcUpdated)
+        {
+            if (index >= targets.Count)
+            {
+                _hubBusy = false;
+                pullBtn.SetEnabled(true);
+                pullBtn.text = "⬇ Pull from AppDeployHub";
+
+                if (gpUpdated > 0 || gcUpdated > 0)
+                {
+                    EditorUtility.SetDirty(_map);
+                    AssetDatabase.SaveAssetIfDirty(_map);
+                    Refresh();
+                }
+
+                EditorUtility.DisplayDialog("AppDeployHub",
+                    $"Sync completed from {targets.Count} app(s):\n" +
+                    $"• Google Play IDs updated: {gpUpdated}\n" +
+                    $"• Apple IDs updated: {gcUpdated}", "OK");
+                return;
+            }
+
+            var target = targets[index];
+            AppDeployHubClient.RunThen(
+                AppDeployHubClient.GetAchievementsAsync(target.id),
+                response =>
+                {
+                    if (response.Ok)
+                    {
+                        var file = AppDeployHubClient.ParseExchangeFile(response.Body);
+                        if (file?.entries != null)
+                        {
+                            Undo.RecordObject(_map, "Pull Achievements from AppDeployHub");
+                            for (int i = 0; i < _map.Entries.Count; i++)
+                            {
+                                var entry = _map.Entries[i];
+                                var key = AchievementTierMap.LocId(entry.TrophyNumber, entry.Tier);
+                                var match = file.entries.FirstOrDefault(e =>
+                                    string.Equals(e.key, key, StringComparison.OrdinalIgnoreCase));
+
+                                if (match != null)
+                                {
+                                    bool changed = false;
+                                    if (!string.IsNullOrEmpty(match.googlePlayId) && entry.GooglePlayId != match.googlePlayId)
+                                    {
+                                        entry.GooglePlayId = match.googlePlayId;
+                                        gpUpdated++;
+                                        changed = true;
+                                    }
+                                    if (!string.IsNullOrEmpty(match.appleId) && entry.AppleId != match.appleId)
+                                    {
+                                        entry.AppleId = match.appleId;
+                                        gcUpdated++;
+                                        changed = true;
+                                    }
+                                    if (changed)
+                                    {
+                                        _map.Entries[i] = entry;
+                                    }
+                                }
+                            }
+                        }
+                        PullNext(targets, index + 1, pullBtn, gpUpdated, gcUpdated);
+                        return;
+                    }
+
+                    if (response.Status == 401 && !AppDeployHubSettings.TokenFromEnvironment)
+                    {
+                        HandleHubError(response);
+                        _hubBusy = false;
+                        pullBtn.SetEnabled(true);
+                        pullBtn.text = "⬇ Pull from AppDeployHub";
+                        return;
+                    }
+
+                    PullNext(targets, index + 1, pullBtn, gpUpdated, gcUpdated);
                 });
         }
 

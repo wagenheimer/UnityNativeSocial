@@ -156,6 +156,29 @@ namespace Wagenheimer.NativeSocial.Editor
             public bool googlePlayPushQueued, gameCenterPushQueued;
         }
 
+        [Serializable]
+        internal class ExchangeEntry
+        {
+            public string key;
+            public string displayName;
+            public string earnedDescription;
+            public string notEarnedDescription;
+            public int points;
+            public bool isHidden;
+            public string steamStat;
+            public string googlePlayId;
+            public string appleId;
+        }
+
+        [Serializable]
+        internal class ExchangeFile
+        {
+            public string formatId;
+            public string gameName;
+            public string locale;
+            public ExchangeEntry[] entries;
+        }
+
         internal struct Response
         {
             public bool Ok;
@@ -192,6 +215,9 @@ namespace Wagenheimer.NativeSocial.Editor
             SendAsync(HttpMethod.Post,
                 $"/api/v1/apps/{appId}/achievements/import?pushGooglePlay={pushGooglePlay.ToString().ToLowerInvariant()}&pushGameCenter={pushGameCenter.ToString().ToLowerInvariant()}",
                 json);
+
+        public static Task<Response> GetAchievementsAsync(string appId) =>
+            SendAsync(HttpMethod.Get, $"/api/v1/apps/{appId}/achievements", null);
 
         private static async Task<Response> SendAsync(HttpMethod method, string path, string jsonBody, bool authenticated = true)
         {
@@ -249,6 +275,7 @@ namespace Wagenheimer.NativeSocial.Editor
         internal static LoginResult ParseLogin(string body) => JsonUtility.FromJson<LoginResult>(body);
 
         internal static ImportResult ParseImportResult(string body) => JsonUtility.FromJson<ImportResult>(body);
+        internal static ExchangeFile ParseExchangeFile(string body) => JsonUtility.FromJson<ExchangeFile>(body);
 
         /// <summary>
         /// Runs <paramref name="task"/> without blocking the Editor and calls <paramref name="onDone"/> on the
