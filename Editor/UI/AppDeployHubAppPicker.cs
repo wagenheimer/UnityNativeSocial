@@ -148,13 +148,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             });
             row.Add(toggle);
 
-            var badge = new Label(PlatformLabel(app))
-            {
-                style = { backgroundColor = BadgeColor(app), color = Color.white, unityFontStyleAndWeight = FontStyle.Bold, minWidth = 78, unityTextAlign = TextAnchor.MiddleCenter, marginRight = 8 }
-            };
-            badge.SetRadius(8);
-            badge.SetPadding(6, 1);
-            row.Add(badge);
+            row.Add(CreateBadge(app));
 
             var text = new VisualElement { style = { flexGrow = 1, flexShrink = 1 } };
             var id = Identifier(app);
@@ -162,6 +156,18 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             text.Add(new Label($"receives {StoreLabel(app)} achievements") { style = { color = NativeSocialUIStyle.ColorTextMuted, fontSize = 10 } });
             row.Add(text);
             return row;
+        }
+
+        /// <summary>The coloured platform pill, shared by the picker rows and the collapsed selection summary.</summary>
+        internal static Label CreateBadge(AppDeployHubClient.AppSummary app)
+        {
+            var badge = new Label(PlatformLabel(app))
+            {
+                style = { backgroundColor = BadgeColor(app), color = Color.white, unityFontStyleAndWeight = FontStyle.Bold, minWidth = 78, unityTextAlign = TextAnchor.MiddleCenter, marginRight = 8 }
+            };
+            badge.SetRadius(8);
+            badge.SetPadding(6, 1);
+            return badge;
         }
 
         private static Color BadgeColor(AppDeployHubClient.AppSummary app) => app.platform switch

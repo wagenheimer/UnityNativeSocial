@@ -358,7 +358,13 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             card.Add(appRow);
 
             if (_hubApps.Length > 0)
-                card.Add(new AppDeployHubAppPicker(_hubApps, AppDeployHubSettings.AppIds, ids => AppDeployHubSettings.SetApps(ids)).Build());
+            {
+                var chosen = _hubApps.Where(a => AppDeployHubSettings.AppIds.Contains(a.id)).ToList();
+                if (chosen.Count > 0 && !_pickerOpen)
+                    card.Add(BuildSelectionSummary(chosen));
+                else
+                    card.Add(BuildPickerWithDone(chosen.Count > 0));
+            }
 
             var pushGp = new Toggle("Also queue the Google Play push (creates the achievements on the store)") { value = _pushGooglePlay };
             pushGp.RegisterValueChangedCallback(e => _pushGooglePlay = e.newValue);
@@ -372,6 +378,38 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             sendBtn.style.marginTop = 8;
             sendBtn.clicked += () => SendToAppDeployHub(sendBtn);
             card.Add(sendBtn);
+        }
+
+        private bool _pickerOpen;
+
+        /// <summary>The apps already chosen, compact; one button reopens the full list to change them.</summary>
+        private VisualElement BuildSelectionSummary(List<AppDeployHubClient.AppSummary> chosen)
+        {
+            var box = new VisualElement { style = { marginTop = 6 } };
+            box.Add(new Label("Sending to:") { style = { color = NativeSocialUIStyle.ColorTextMuted } });
+            foreach (var app in chosen)
+            {
+                var row = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, marginTop = 3, flexShrink = 0 } };
+                row.Add(AppDeployHubAppPicker.CreateBadge(app));
+                row.Add(new Label($"{app.name}  ·  {AppDeployHubAppPicker.Identifier(app)}  ·  {AppDeployHubAppPicker.StoreLabel(app)}") { style = { flexShrink = 1, color = NativeSocialUIStyle.ColorText } });
+                box.Add(row);
+            }
+            var change = NativeSocialUIStyle.CreateButton("Change…", () => { _pickerOpen = true; RebuildHubCard(); });
+            change.style.marginTop = 4;
+            change.style.alignSelf = Align.FlexStart;
+            box.Add(change);
+            return box;
+        }
+
+        private VisualElement BuildPickerWithDone(bool hasSelection)
+        {
+            var box = new VisualElement();
+            box.Add(new AppDeployHubAppPicker(_hubApps, AppDeployHubSettings.AppIds, ids => AppDeployHubSettings.SetApps(ids)).Build());
+            var done = NativeSocialUIStyle.CreateButton("Done", () => { _pickerOpen = false; RebuildHubCard(); }, primary: true);
+            done.style.marginTop = 4;
+            done.style.alignSelf = Align.FlexStart;
+            box.Add(done);
+            return box;
         }
 
         private void SendToAppDeployHub(Button sendBtn)
