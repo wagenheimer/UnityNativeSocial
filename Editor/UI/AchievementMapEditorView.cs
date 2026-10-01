@@ -35,10 +35,18 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private VisualElement _summary;
         private VisualElement _list;
+        private VisualElement _filterChips;
         private Label _dirtyLabel;
         private string _language = I2Bridge.DefaultLanguage;
         private string _search = string.Empty;
         private Filter _filter = Filter.All;
+
+        private void SetFilter(Filter filter)
+        {
+            _filter = filter;
+            RebuildList();
+            if (_filterChips != null) UpdateChipStyles(_filterChips);
+        }
 
         public AchievementMapEditorView(AchievementTierMap map)
         {
@@ -115,12 +123,12 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 card.Add(sourceRow);
             }
 
-            var chips = Row();
+            _filterChips = Row();
             void AddChip(string label, Filter filter)
             {
-                var chip = NativeSocialUIStyle.CreateButton(label, () => { _filter = filter; RebuildList(); UpdateChipStyles(chips); });
+                var chip = NativeSocialUIStyle.CreateButton(label, () => SetFilter(filter));
                 chip.userData = filter;
-                chips.Add(chip);
+                _filterChips.Add(chip);
             }
             AddChip("All", Filter.All);
             AddChip("Missing Steam", Filter.MissingSteam);
@@ -128,8 +136,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             AddChip("Missing Apple", Filter.MissingApple);
             AddChip("Missing I2 terms", Filter.MissingI2);
             AddChip("Hidden", Filter.Hidden);
-            UpdateChipStyles(chips);
-            card.Add(chips);
+            UpdateChipStyles(_filterChips);
+            card.Add(_filterChips);
 
             var actions = Row();
             var fillBtn = NativeSocialUIStyle.CreateButton("🔗 Fill default term keys", () =>
@@ -551,14 +559,39 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                     Refresh();
                 }
 
-                EditorUtility.DisplayDialog("AppDeployHub",
-                    $"Sync completed from {targets.Count} app(s):\n" +
-                    $"• Google Play IDs updated: {gpUpdated}\n" +
-                    $"• Apple IDs updated: {gcUpdated}", "OK");
+                int missingGp = _map.Entries.Count(e => string.IsNullOrEmpty(e.GooglePlayId));
+                int missingGc = _map.Entries.Count(e => string.IsNullOrEmpty(e.AppleId));
+                int totalEntries = _map.Entries.Count;
+
+                Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> <b>Pull Concluído</b> de {targets.Count} app(s):\n" +
+                          $" • Google Play IDs atualizados: {gpUpdated} (Total preenchido: {totalEntries - missingGp}/{totalEntries})\n" +
+                          $" • Apple IDs atualizados: {gcUpdated} (Total preenchido: {totalEntries - missingGc}/{totalEntries})");
+
+                if (missingGp > 0)
+                {
+                    var missingNames = _map.Entries.Where(e => string.IsNullOrEmpty(e.GooglePlayId))
+                        .Select(e => $"{AchievementTierMap.LocId(e.TrophyNumber, e.Tier)} ({e.LiteralName})");
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ <b>{missingGp} conquista(s) continuam sem GooglePlayId:</b>\n" +
+                                     string.Join(", ", missingNames) +
+                                     "\n\n<i>Dica: Se você importou o CSV/ZIP no Google Play Console, clique em 'Sincronizar Google Play' na página do jogo no AppDeployHub web para que ele importe os IDs gerados pelo Google e possa enviá-los ao Unity.</i>");
+                }
+
+                string summaryMsg = $"Sincronização concluída com sucesso de {targets.Count} app(s)!\n\n" +
+                                   $"• Google Play IDs atualizados: {gpUpdated} (Atual no projeto: {totalEntries - missingGp}/{totalEntries})\n" +
+                                   $"• Apple IDs atualizados: {gcUpdated} (Atual no projeto: {totalEntries - missingGc}/{totalEntries})";
+
+                if (missingGp > 0)
+                {
+                    summaryMsg += $"\n\n⚠ Atenção: {missingGp} conquista(s) continuam sem ID do Google Play. Verifique o console do Unity para ver a lista das conquistas pendentes e sincronize no AppDeployHub web.";
+                }
+
+                EditorUtility.DisplayDialog("AppDeployHub - Pull", summaryMsg, "OK");
                 return;
             }
 
             var target = targets[index];
+            Debug.Log($"<color=#2196F3><b>[NativeSocial]</b></color> Baixando achievements do app: <b>{target.name}</b> ({target.id}) [Plataforma: {target.platform}]...");
+
             AppDeployHubClient.RunThen(
                 AppDeployHubClient.GetAchievementsAsync(target.id),
                 response =>
@@ -568,6 +601,21 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         var file = AppDeployHubClient.ParseExchangeFile(response.Body);
                         if (file?.entries != null)
                         {
+                            int hubTotal = file.entries.Length;
+                            int hubWithGp = file.entries.Count(e => !string.IsNullOrEmpty(e.googlePlayId));
+                            int hubWithGc = file.entries.Count(e => !string.IsNullOrEmpty(e.appleId));
+
+                            Debug.Log($"<color=#2196F3><b>[NativeSocial]</b></color> AppDeployHub retornou {hubTotal} achievements para '{target.name}':\n" +
+                                      $" • Com GooglePlayId: {hubWithGp}/{hubTotal}\n" +
+                                      $" • Com AppleId: {hubWithGc}/{hubTotal}");
+
+                            if (hubWithGp < hubTotal)
+                            {
+                                var missingOnHub = file.entries.Where(e => string.IsNullOrEmpty(e.googlePlayId)).Select(e => e.key);
+                                Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> No AppDeployHub (app '{target.name}'), {hubTotal - hubWithGp} achievements estão sem ExternalId do Google Play no servidor:\n" +
+                                                 string.Join(", ", missingOnHub));
+                            }
+
                             Undo.RecordObject(_map, "Pull Achievements from AppDeployHub");
                             for (int i = 0; i < _map.Entries.Count; i++)
                             {
@@ -581,12 +629,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                     bool changed = false;
                                     if (!string.IsNullOrEmpty(match.googlePlayId) && entry.GooglePlayId != match.googlePlayId)
                                     {
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.LiteralName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
                                         entry.GooglePlayId = match.googlePlayId;
                                         gpUpdated++;
                                         changed = true;
                                     }
                                     if (!string.IsNullOrEmpty(match.appleId) && entry.AppleId != match.appleId)
                                     {
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.LiteralName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
                                         entry.AppleId = match.appleId;
                                         gcUpdated++;
                                         changed = true;
@@ -602,11 +652,22 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                         _map.Entries[i] = entry;
                                     }
                                 }
+                                else
+                                {
+                                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> A conquista local [{key}] '{entry.LiteralName}' não foi encontrada no AppDeployHub (app '{target.name}').");
+                                }
                             }
                         }
+                        else
+                        {
+                            Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> Nenhum achievement retornado pelo AppDeployHub para '{target.name}'.");
+                        }
+
                         PullNext(targets, index + 1, pullBtn, gpUpdated, gcUpdated);
                         return;
                     }
+
+                    Debug.LogError($"<color=#F44336><b>[NativeSocial]</b></color> Falha ao buscar achievements de '{target.name}': {response.Status} - {response.Error}");
 
                     if (response.Status == 401 && !AppDeployHubSettings.TokenFromEnvironment)
                     {
@@ -718,30 +779,39 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             int total = _map.Entries.Count;
             int trophies = _map.Entries.Select(e => e.TrophyNumber).Distinct().Count();
 
-            void Add(string label, int count, string tooltip)
+            void Add(string label, int count, string tooltip, Filter? targetFilter = null)
             {
                 var severity = total > 0 && count == total ? AuditSeverity.Pass : AuditSeverity.Warning;
                 var badge = NativeSocialUIStyle.CreateBadge($"{label} {count}/{total}", severity);
-                badge.tooltip = tooltip + (count == total ? "\n\nGreen: every tier is done." : "\n\nAmber: still to do for some tiers - not an error, nothing is broken.");
+                string filterHint = targetFilter.HasValue && count < total ? "\n\n👉 Clique para filtrar as conquistas pendentes." : "";
+                badge.tooltip = tooltip + (count == total ? "\n\nGreen: every tier is done." : "\n\nAmber: still to do for some tiers - not an error, nothing is broken.") + filterHint;
                 badge.style.marginRight = 6;
                 badge.style.marginBottom = 4;
+                if (targetFilter.HasValue)
+                {
+                    badge.style.cursor = StyleCursor.Create(MouseCursor.Link);
+                    badge.RegisterCallback<ClickEvent>(_ => SetFilter(targetFilter.Value));
+                }
                 _summary.Add(badge);
             }
 
             var info = NativeSocialUIStyle.CreateBadge($"🏆 {trophies} trophies · {total} tiers", AuditSeverity.Info);
             info.style.marginRight = 6;
             info.style.marginBottom = 4;
+            info.style.cursor = StyleCursor.Create(MouseCursor.Link);
+            info.RegisterCallback<ClickEvent>(_ => SetFilter(Filter.All));
+            info.tooltip = "Clique para mostrar todas as conquistas.";
             _summary.Add(info);
 
-            Add("Steam", _map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamStat)), SteamHelp);
-            Add("Google Play", _map.Entries.Count(e => !string.IsNullOrEmpty(e.GooglePlayId)), GoogleHelp);
-            Add("Apple", _map.Entries.Count(e => !string.IsNullOrEmpty(e.AppleId)), AppleHelp);
+            Add("Steam", _map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamStat)), SteamHelp, Filter.MissingSteam);
+            Add("Google Play", _map.Entries.Count(e => !string.IsNullOrEmpty(e.GooglePlayId)), GoogleHelp, Filter.MissingGoogle);
+            Add("Apple", _map.Entries.Count(e => !string.IsNullOrEmpty(e.AppleId)), AppleHelp, Filter.MissingApple);
 
             if (I2Bridge.IsAvailable)
             {
-                Add("I2 names", _map.Entries.Count(e => I2Bridge.TermExists(e.NameTerm)), "Tiers whose NAME term exists in I2 Localization.");
-                Add("I2 earned", _map.Entries.Count(e => I2Bridge.TermExists(e.EarnedDescriptionTerm)), "Tiers whose EARNED description term exists in I2 Localization.");
-                Add("I2 not earned", _map.Entries.Count(e => I2Bridge.TermExists(e.NotEarnedDescriptionTerm)), "Tiers whose NOT-EARNED description term exists in I2 Localization.");
+                Add("I2 names", _map.Entries.Count(e => I2Bridge.TermExists(e.NameTerm)), "Tiers whose NAME term exists in I2 Localization.", Filter.MissingI2);
+                Add("I2 earned", _map.Entries.Count(e => I2Bridge.TermExists(e.EarnedDescriptionTerm)), "Tiers whose EARNED description term exists in I2 Localization.", Filter.MissingI2);
+                Add("I2 not earned", _map.Entries.Count(e => I2Bridge.TermExists(e.NotEarnedDescriptionTerm)), "Tiers whose NOT-EARNED description term exists in I2 Localization.", Filter.MissingI2);
             }
 
             _summary.Add(new Label("green = done  ·  amber = still to do (not an error). Hover any badge to see what it means.")
