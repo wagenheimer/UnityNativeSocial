@@ -570,7 +570,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 if (missingGp > 0)
                 {
                     var missingNames = _map.Entries.Where(e => string.IsNullOrEmpty(e.GooglePlayId))
-                        .Select(e => $"{AchievementTierMap.LocId(e.TrophyNumber, e.Tier)} ({e.LiteralName})");
+                        .Select(e => $"{AchievementTierMap.LocId(e.TrophyNumber, e.Tier)} ({e.DisplayName})");
                     Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ <b>{missingGp} conquista(s) continuam sem GooglePlayId:</b>\n" +
                                      string.Join(", ", missingNames) +
                                      "\n\n<i>Dica: Se você importou o CSV/ZIP no Google Play Console, clique em 'Sincronizar Google Play' na página do jogo no AppDeployHub web para que ele importe os IDs gerados pelo Google e possa enviá-los ao Unity.</i>");
@@ -629,14 +629,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                     bool changed = false;
                                     if (!string.IsNullOrEmpty(match.googlePlayId) && entry.GooglePlayId != match.googlePlayId)
                                     {
-                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.LiteralName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
                                         entry.GooglePlayId = match.googlePlayId;
                                         gpUpdated++;
                                         changed = true;
                                     }
                                     if (!string.IsNullOrEmpty(match.appleId) && entry.AppleId != match.appleId)
                                     {
-                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.LiteralName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
                                         entry.AppleId = match.appleId;
                                         gcUpdated++;
                                         changed = true;
@@ -654,7 +654,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                 }
                                 else
                                 {
-                                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> A conquista local [{key}] '{entry.LiteralName}' não foi encontrada no AppDeployHub (app '{target.name}').");
+                                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> A conquista local [{key}] '{entry.DisplayName}' não foi encontrada no AppDeployHub (app '{target.name}').");
                                 }
                             }
                         }
@@ -789,7 +789,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 badge.style.marginBottom = 4;
                 if (targetFilter.HasValue)
                 {
-                    badge.style.cursor = StyleCursor.Create(MouseCursor.Link);
+                    badge.AddToClassList("ns-clickable");
                     badge.RegisterCallback<ClickEvent>(_ => SetFilter(targetFilter.Value));
                 }
                 _summary.Add(badge);
@@ -798,7 +798,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             var info = NativeSocialUIStyle.CreateBadge($"🏆 {trophies} trophies · {total} tiers", AuditSeverity.Info);
             info.style.marginRight = 6;
             info.style.marginBottom = 4;
-            info.style.cursor = StyleCursor.Create(MouseCursor.Link);
+            info.AddToClassList("ns-clickable");
             info.RegisterCallback<ClickEvent>(_ => SetFilter(Filter.All));
             info.tooltip = "Clique para mostrar todas as conquistas.";
             _summary.Add(info);

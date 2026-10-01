@@ -139,6 +139,10 @@
     -unity-font-style: bold;
 }
 
+.ns-clickable:hover {
+    opacity: 0.8;
+}
+
 .ns-badge-success {
     background-color: #064e3b;
     color: #6ee7b7;
