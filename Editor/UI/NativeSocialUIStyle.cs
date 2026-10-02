@@ -129,6 +129,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             return button;
         }
 
+        public static Button CreateFilterButton(string text, Action onClick, bool active)
+        {
+            var button = new Button(onClick) { text = text };
+            button.AddToClassList("ns-filter-btn");
+            if (active) button.AddToClassList("ns-filter-btn-active");
+            return button;
+        }
+
         public static VisualElement CreateCallout(string message, AuditSeverity level = AuditSeverity.Info)
         {
             var box = new VisualElement();

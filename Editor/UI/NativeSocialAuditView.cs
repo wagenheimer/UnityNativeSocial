@@ -21,6 +21,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private AuditSeverity? _severityFilter;
         private string _platformFilter;
         private VisualElement _resultsContainer;
+        private VisualElement _platformRow;
+        private VisualElement _severityRow;
         private Label _summaryLabel;
 
         public NativeSocialAuditView()
@@ -58,28 +60,18 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             actionsRow.Add(promptBtn);
             headerCard.Add(actionsRow);
 
-            // Platform Filter Row
-            var platformRow = Row();
-            platformRow.Add(new Label("Platform:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
-            platformRow.Add(NativeSocialUIStyle.CreateButton("🌐 All Platforms", () => SetPlatformFilter(null)));
-            platformRow.Add(NativeSocialUIStyle.CreateButton("⚙️ Core", () => SetPlatformFilter(NativeSocialAudit.CategoryCommon)));
-            platformRow.Add(NativeSocialUIStyle.CreateButton("🖥️ Steam", () => SetPlatformFilter(NativeSocialAudit.CategorySteam)));
-            platformRow.Add(NativeSocialUIStyle.CreateButton("🤖 Android", () => SetPlatformFilter(NativeSocialAudit.CategoryAndroid)));
-            platformRow.Add(NativeSocialUIStyle.CreateButton("🍎 iOS", () => SetPlatformFilter(NativeSocialAudit.CategoryIOS)));
-            headerCard.Add(platformRow);
+            _platformRow = Row();
+            headerCard.Add(_platformRow);
 
-            // Severity Filter Row
-            var severityRow = Row();
-            severityRow.Add(new Label("Severity:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
-            severityRow.Add(NativeSocialUIStyle.CreateButton("All Severities", () => SetSeverityFilter(null)));
-            severityRow.Add(NativeSocialUIStyle.CreateButton("✕ Fails Only", () => SetSeverityFilter(AuditSeverity.Fail)));
-            severityRow.Add(NativeSocialUIStyle.CreateButton("⚠ Warnings Only", () => SetSeverityFilter(AuditSeverity.Warning)));
-            headerCard.Add(severityRow);
+            _severityRow = Row();
+            headerCard.Add(_severityRow);
+
+            RefreshFilterBars();
 
             _summaryLabel = new Label("Running audit...");
             _summaryLabel.style.fontSize = 11;
             _summaryLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _summaryLabel.style.marginTop = 4;
+            _summaryLabel.style.marginTop = 6;
             headerCard.Add(_summaryLabel);
 
             Root.Add(headerCard);
@@ -95,6 +87,29 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             Root.Add(_resultsContainer);
         }
 
+        private void RefreshFilterBars()
+        {
+            if (_platformRow != null)
+            {
+                _platformRow.Clear();
+                _platformRow.Add(new Label("Platform:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🌐 All Platforms", () => SetPlatformFilter(null), _platformFilter == null));
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("⚙️ Core", () => SetPlatformFilter(NativeSocialAudit.CategoryCommon), _platformFilter == NativeSocialAudit.CategoryCommon));
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🖥️ Steam", () => SetPlatformFilter(NativeSocialAudit.CategorySteam), _platformFilter == NativeSocialAudit.CategorySteam));
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🤖 Android", () => SetPlatformFilter(NativeSocialAudit.CategoryAndroid), _platformFilter == NativeSocialAudit.CategoryAndroid));
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🍎 iOS", () => SetPlatformFilter(NativeSocialAudit.CategoryIOS), _platformFilter == NativeSocialAudit.CategoryIOS));
+            }
+
+            if (_severityRow != null)
+            {
+                _severityRow.Clear();
+                _severityRow.Add(new Label("Severity:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
+                _severityRow.Add(NativeSocialUIStyle.CreateFilterButton("All Severities", () => SetSeverityFilter(null), !_severityFilter.HasValue));
+                _severityRow.Add(NativeSocialUIStyle.CreateFilterButton("✕ Fails Only", () => SetSeverityFilter(AuditSeverity.Fail), _severityFilter == AuditSeverity.Fail));
+                _severityRow.Add(NativeSocialUIStyle.CreateFilterButton("⚠ Warnings Only", () => SetSeverityFilter(AuditSeverity.Warning), _severityFilter == AuditSeverity.Warning));
+            }
+        }
+
         public void RunAudit()
         {
             _results = NativeSocialAudit.RunAudit();
@@ -104,12 +119,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private void SetPlatformFilter(string platform)
         {
             _platformFilter = platform;
+            RefreshFilterBars();
             RefreshResults();
         }
 
         private void SetSeverityFilter(AuditSeverity? filter)
         {
             _severityFilter = filter;
+            RefreshFilterBars();
             RefreshResults();
         }
 
@@ -152,12 +169,12 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             if (fails > 0)
             {
-                _summaryLabel.text = $"❌ {fails} critical failure(s) found: resolve before publishing.";
+                _summaryLabel.text = $"❌ {fails} critical failure(s) found  |  ⚠️ {warnings} warning(s)  |  ✓ {passes} passed";
                 _summaryLabel.style.color = NativeSocialUIStyle.ColorError;
             }
             else if (warnings > 0)
             {
-                _summaryLabel.text = $"⚠️ {warnings} warning(s) found: review recommended.";
+                _summaryLabel.text = $"⚠️ {warnings} warning(s) found  |  ✓ {passes} passed cleanly";
                 _summaryLabel.style.color = NativeSocialUIStyle.ColorWarning;
             }
             else
@@ -173,21 +190,29 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             row.style.flexDirection = FlexDirection.Row;
             row.style.justifyContent = Justify.SpaceBetween;
             row.style.alignItems = Align.FlexStart;
-            row.style.paddingTop = 6;
-            row.style.paddingBottom = 6;
+            row.style.paddingTop = 8;
+            row.style.paddingBottom = 8;
             row.style.borderBottomWidth = 1;
             row.style.borderBottomColor = new Color(0.137f, 0.192f, 0.267f);
 
             var textCol = new VisualElement { style = { flexGrow = 1, flexShrink = 1, marginRight = 10 } };
             textCol.Add(CreateText(item.Title, 12, FontStyle.Bold, Color.clear));
+
             if (!string.IsNullOrEmpty(item.WhatIsThis))
-                textCol.Add(CreateText("ℹ️ " + item.WhatIsThis, 10, FontStyle.Italic, new Color(0.62f, 0.66f, 0.72f)));
+            {
+                var whatBox = new VisualElement();
+                whatBox.AddToClassList("ns-audit-whatisthis");
+                whatBox.Add(new Label("ℹ️ " + item.WhatIsThis) { style = { whiteSpace = WhiteSpace.Normal, fontSize = 10 } });
+                textCol.Add(whatBox);
+            }
+
             if (!string.IsNullOrEmpty(item.Detail))
                 textCol.Add(CreateText(item.Detail, 10, FontStyle.Normal, NativeSocialUIStyle.ColorTextMuted));
+
             if (!string.IsNullOrEmpty(item.FixHint))
                 textCol.Add(CreateText("💡 " + item.FixHint, 10, FontStyle.Normal, new Color(0.45f, 0.75f, 0.95f)));
-            row.Add(textCol);
 
+            row.Add(textCol);
             row.Add(CreateActions(item));
             return row;
         }

@@ -52,6 +52,20 @@ namespace Wagenheimer.NativeSocial.Editor
         public const string CategoryAndroid = "🤖 Android (Google Play Games)";
         public const string CategoryIOS = "🍎 iOS (Game Center)";
 
+        public struct ProjectCodeAnalysis
+        {
+            public bool HasInitialize;
+            public string InitializePath;
+            public bool HasReport;
+            public string ReportPath;
+            public bool HasLocId;
+            public string LocIdPath;
+            public bool HasSyncCompleted;
+            public string SyncCompletedPath;
+        }
+
+        private static ProjectCodeAnalysis? _cachedAnalysis;
+
         [MenuItem("Tools/Wagenheimer/Native Social/Verify Setup...", priority = 1)]
         public static void OpenWindow() => NativeSocialDashboardWindow.Open(NativeSocialDashboardWindow.Tab.SetupAudit);
 
@@ -80,16 +94,71 @@ namespace Wagenheimer.NativeSocial.Editor
 
         #region Core & Mapping
 
+        public static ProjectCodeAnalysis AnalyzeProjectCode(bool forceRefresh = false)
+        {
+            if (_cachedAnalysis.HasValue && !forceRefresh)
+                return _cachedAnalysis.Value;
+
+            var analysis = new ProjectCodeAnalysis();
+            var guids = AssetDatabase.FindAssets("t:MonoScript");
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) continue;
+                if (path.IndexOf("NativeSocial", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (path.EndsWith("NativeSocialAudit.cs", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("NativeSocialAuditView.cs", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("NativeSocialChecklistView.cs", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("NativeSocialBootstrap.cs", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+                if (script == null) continue;
+                var text = script.text;
+                if (string.IsNullOrEmpty(text)) continue;
+
+                if (!analysis.HasInitialize && text.Contains("NativeSocial.Initialize"))
+                {
+                    analysis.HasInitialize = true;
+                    analysis.InitializePath = path;
+                }
+
+                if (!analysis.HasReport && text.Contains("NativeSocial.Report"))
+                {
+                    analysis.HasReport = true;
+                    analysis.ReportPath = path;
+                }
+
+                if (!analysis.HasLocId && (text.Contains("AchievementTierMap.LocId") || text.Contains(".LocId(")))
+                {
+                    analysis.HasLocId = true;
+                    analysis.LocIdPath = path;
+                }
+
+                if (!analysis.HasSyncCompleted && (text.Contains("NativeSocial.SyncCompleted") || text.Contains(".SyncCompleted") || text.Contains("SyncAchievementTiers")))
+                {
+                    analysis.HasSyncCompleted = true;
+                    analysis.SyncCompletedPath = path;
+                }
+
+                if (analysis.HasInitialize && analysis.HasReport && analysis.HasLocId && analysis.HasSyncCompleted)
+                    break;
+            }
+
+            _cachedAnalysis = analysis;
+            return analysis;
+        }
+
         private static void AuditCommon(List<AuditResult> results)
         {
-            // 1. Check startup initialization in code or via bootstrap script
-            var (initFound, initScriptPath) = FindInitializeCallInProject();
+            var code = AnalyzeProjectCode(forceRefresh: true);
             bool hasBootstrapScript = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length > 0;
 
-            if (initFound)
+            // 1. Startup Initialization
+            if (code.HasInitialize)
             {
                 Add(results, CategoryCommon, "Startup Initialization", true,
-                    $"NativeSocial.Initialize(...) detected in project code: '{initScriptPath}'.",
+                    $"NativeSocial.Initialize(...) detected in project code: '{code.InitializePath}'.",
                     null,
                     whatIsThis: "NativeSocial is initialized at startup directly from your game code with your achievement maps.");
             }
@@ -112,7 +181,26 @@ namespace Wagenheimer.NativeSocial.Editor
                     whatIsThis: "NativeSocial requires a single Initialize() call before achievement progress can be reported.");
             }
 
-            // 2. Check AchievementTierMap asset
+            // 2. Progress Reporting Calls
+            if (code.HasReport)
+            {
+                Add(results, CategoryCommon, "Progress Reporting Calls", true,
+                    $"NativeSocial.Report(...) call detected in project code: '{code.ReportPath}'.",
+                    null,
+                    whatIsThis: "Gameplay code dispatches achievement progress through NativeSocial.Report(...) without platform-specific code.");
+            }
+            else
+            {
+                Add(results, CategoryCommon, "Progress Reporting Calls", false,
+                    null,
+                    "No NativeSocial.Report(...) call detected in project code: achievements will not be updated as the player progresses.",
+                    "Call NativeSocial.Report(locId, delta, current, total, completed) from your achievement/stat manager.",
+                    null, null,
+                    AuditSeverity.Info,
+                    whatIsThis: "NativeSocial.Report routes achievement unlocks to the active platform (Steam, Android, or iOS).");
+            }
+
+            // 3. Check AchievementTierMap asset
             var maps = FindAllAchievementTierMaps();
             if (maps.Count == 0)
             {
@@ -147,26 +235,8 @@ namespace Wagenheimer.NativeSocial.Editor
 
         internal static (bool Found, string ScriptPath) FindInitializeCallInProject()
         {
-            var guids = AssetDatabase.FindAssets("t:MonoScript");
-            foreach (var guid in guids)
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) continue;
-                if (path.IndexOf("NativeSocial", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    (path.EndsWith("NativeSocialAudit.cs", StringComparison.OrdinalIgnoreCase) ||
-                     path.EndsWith("NativeSocialAuditView.cs", StringComparison.OrdinalIgnoreCase) ||
-                     path.EndsWith("NativeSocialBootstrap.cs", StringComparison.OrdinalIgnoreCase)))
-                    continue;
-
-                var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
-                if (script == null) continue;
-                var text = script.text;
-                if (!string.IsNullOrEmpty(text) && text.Contains("NativeSocial.Initialize"))
-                {
-                    return (true, path);
-                }
-            }
-            return (false, null);
+            var analysis = AnalyzeProjectCode();
+            return (analysis.HasInitialize, analysis.InitializePath);
         }
 
         internal static void CreateBootstrapScriptAsset()
@@ -280,8 +350,7 @@ public class NativeSocialBootstrap : MonoBehaviour
 
         private static void AuditSteam(List<AuditResult> results)
         {
-            bool steamFound = IsTypeAvailable("Steamworks.SteamUserStats") ||
-                              UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(p => p.name == "com.rlabrecque.steamworks.net");
+            bool steamFound = IsTypeAvailable("Steamworks.SteamUserStats") || IsPackageRegistered("com.rlabrecque.steamworks.net");
             bool steamDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_STEAM");
 
             Add(results, CategorySteam, "Steamworks.NET Plugin (Steam)", steamFound,
@@ -410,9 +479,26 @@ public class NativeSocialBootstrap : MonoBehaviour
 
         internal static List<AchievementTierMap> FindAllAchievementTierMaps() =>
             AssetDatabase.FindAssets("t:AchievementTierMap")
-                .Select(guid => AssetDatabase.LoadAssetAtPath<AchievementTierMap>(AssetDatabase.GUIDToAssetPath(guid)))
+                .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
+                .Where(p => !p.StartsWith("Packages/com.wagenheimer.nativesocial/Tests", StringComparison.OrdinalIgnoreCase))
+                .Select(p => AssetDatabase.LoadAssetAtPath<AchievementTierMap>(p))
                 .Where(m => m != null)
+                .OrderByDescending(m => AssetDatabase.GetAssetPath(m).StartsWith("Assets/Resources", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(m => AssetDatabase.GetAssetPath(m).StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
                 .ToList();
+
+        internal static bool IsPackageRegistered(string packageId)
+        {
+            try
+            {
+                return UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()
+                    .Any(p => p.name == packageId);
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         internal static void CreateAchievementTierMapAsset()
         {

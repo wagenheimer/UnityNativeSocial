@@ -111,8 +111,10 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         public VisualElement Root { get; }
 
-        private string _selectedCategory = null; // null = all
+        private string _selectedCategory; // null = all
         private Label _progressLabel;
+        private VisualElement _progressFill;
+        private VisualElement _filterRow;
         private VisualElement _contentBox;
 
         public NativeSocialChecklistView()
@@ -127,7 +129,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             var headerCard = NativeSocialUIStyle.CreateCard("📋 Release & Setup Checklist",
                 "Step-by-step checklist to guarantee 100% working achievements across Steam, Android and iOS. Combines live project detection with store-console instructions.");
 
-            var topRow = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center, marginBottom = 8 } };
+            var topRow = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center, marginBottom = 4 } };
             _progressLabel = new Label();
             _progressLabel.style.fontSize = 11;
             _progressLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -136,15 +138,18 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             topRow.Add(NativeSocialUIStyle.CreateButton("↺ Reset Manual Checks", ResetChecklist));
             headerCard.Add(topRow);
 
+            // Progress bar
+            var progressTrack = new VisualElement();
+            progressTrack.AddToClassList("ns-progress-track");
+            _progressFill = new VisualElement();
+            _progressFill.AddToClassList("ns-progress-fill");
+            progressTrack.Add(_progressFill);
+            headerCard.Add(progressTrack);
+
             // Filter Tabs
-            var filterRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, flexWrap = Wrap.Wrap, marginTop = 4 } };
-            filterRow.Add(NativeSocialUIStyle.CreateButton("🌐 All Platforms", () => SetFilter(null)));
-            filterRow.Add(NativeSocialUIStyle.CreateButton("⚙️ Core", () => SetFilter(CategoryCore)));
-            filterRow.Add(NativeSocialUIStyle.CreateButton("🖥️ Steam", () => SetFilter(CategorySteam)));
-            filterRow.Add(NativeSocialUIStyle.CreateButton("🤖 Android", () => SetFilter(CategoryAndroid)));
-            filterRow.Add(NativeSocialUIStyle.CreateButton("🍎 iOS", () => SetFilter(CategoryIOS)));
-            filterRow.Add(NativeSocialUIStyle.CreateButton("🚀 Release", () => SetFilter(CategoryRelease)));
-            headerCard.Add(filterRow);
+            _filterRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, flexWrap = Wrap.Wrap, marginTop = 4 } };
+            headerCard.Add(_filterRow);
+            RefreshFilterBar();
 
             Root.Add(headerCard);
 
@@ -156,9 +161,22 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             RefreshGroups();
         }
 
+        private void RefreshFilterBar()
+        {
+            if (_filterRow == null) return;
+            _filterRow.Clear();
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("🌐 All Platforms", () => SetFilter(null), _selectedCategory == null));
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("⚙️ Core", () => SetFilter(CategoryCore), _selectedCategory == CategoryCore));
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("🖥️ Steam", () => SetFilter(CategorySteam), _selectedCategory == CategorySteam));
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("🤖 Android", () => SetFilter(CategoryAndroid), _selectedCategory == CategoryAndroid));
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("🍎 iOS", () => SetFilter(CategoryIOS), _selectedCategory == CategoryIOS));
+            _filterRow.Add(NativeSocialUIStyle.CreateFilterButton("🚀 Release", () => SetFilter(CategoryRelease), _selectedCategory == CategoryRelease));
+        }
+
         private void SetFilter(string category)
         {
             _selectedCategory = category;
+            RefreshFilterBar();
             RefreshGroups();
         }
 
@@ -216,7 +234,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             var textCol = new VisualElement();
             textCol.AddToClassList("ns-checklist-text");
 
-            var titleRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
+            var titleRow = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center, flexWrap = Wrap.Wrap } };
             var title = new Label(label);
             title.AddToClassList("ns-checklist-title");
             titleRow.Add(title);
@@ -224,19 +242,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             if (isAutoPassed)
             {
                 var autoBadge = new Label(autoStatus);
-                autoBadge.style.fontSize = 10;
-                autoBadge.style.unityFontStyleAndWeight = FontStyle.Bold;
-                autoBadge.style.color = NativeSocialUIStyle.ColorSuccess;
-                autoBadge.style.backgroundColor = new Color(0.12f, 0.28f, 0.18f);
-                autoBadge.style.paddingLeft = 6;
-                autoBadge.style.paddingRight = 6;
-                autoBadge.style.paddingTop = 2;
-                autoBadge.style.paddingBottom = 2;
-                autoBadge.style.marginLeft = 8;
-                autoBadge.style.borderTopLeftRadius = 4;
-                autoBadge.style.borderTopRightRadius = 4;
-                autoBadge.style.borderBottomLeftRadius = 4;
-                autoBadge.style.borderBottomRightRadius = 4;
+                autoBadge.AddToClassList("ns-badge-auto");
                 titleRow.Add(autoBadge);
             }
             textCol.Add(titleRow);
@@ -254,41 +260,58 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             try
             {
+                var code = NativeSocialAudit.AnalyzeProjectCode();
+                var maps = NativeSocialAudit.FindAllAchievementTierMaps();
+                var primaryMap = maps.Count > 0 ? maps[0] : null;
+
                 switch (id)
                 {
                     case "setup_package":
                         return "✓ UPM Installed";
 
                     case "setup_map_asset":
-                        var maps = NativeSocialAudit.FindAllAchievementTierMaps();
-                        if (maps.Count > 0 && maps[0].Entries.Count > 0)
-                            return $"✓ {maps[0].Entries.Count} entries";
+                        if (primaryMap != null && primaryMap.Entries.Count > 0)
+                            return $"✓ {primaryMap.Entries.Count} entries";
                         break;
 
                     case "setup_initialize":
-                        var (initFound, _) = NativeSocialAudit.FindInitializeCallInProject();
-                        if (initFound) return "✓ Initialized in code";
+                        if (code.HasInitialize) return $"✓ {Path.GetFileName(code.InitializePath)}";
                         if (AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length > 0)
                             return "✓ Bootstrap script present";
                         break;
 
+                    case "setup_locid":
+                        if (code.HasLocId) return "✓ LocId verified";
+                        break;
+
+                    case "setup_report":
+                        if (code.HasReport) return $"✓ {Path.GetFileName(code.ReportPath)}";
+                        break;
+
+                    case "setup_sync":
+                        if (code.HasSyncCompleted) return "✓ Sync call verified";
+                        break;
+
+                    case "setup_owner":
+                        if (code.HasInitialize) return "✓ Verified";
+                        break;
+
                     case "steam_installed":
                         bool steamFound = NativeSocialAudit.IsTypeAvailable("Steamworks.SteamUserStats") ||
-                                          UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(p => p.name == "com.rlabrecque.steamworks.net");
+                                          NativeSocialAudit.IsPackageRegistered("com.rlabrecque.steamworks.net");
                         if (steamFound) return "✓ Installed";
                         break;
 
                     case "steam_define":
                         if (NativeSocialAudit.HasDefine("WAGENHEIMER_NATIVESOCIAL_STEAM"))
-                            return "✓ Define active";
+                            return "✓ Active";
                         break;
 
                     case "steam_ids":
-                        var sMaps = NativeSocialAudit.FindAllAchievementTierMaps();
-                        if (sMaps.Count > 0 && sMaps[0].Entries.Count > 0)
+                        if (primaryMap != null && primaryMap.Entries.Count > 0)
                         {
-                            int missing = sMaps[0].Entries.Count(e => string.IsNullOrEmpty(e.SteamStat));
-                            if (missing == 0) return $"✓ {sMaps[0].Entries.Count}/{sMaps[0].Entries.Count} Complete";
+                            int missing = primaryMap.Entries.Count(e => string.IsNullOrEmpty(e.SteamStat));
+                            if (missing == 0) return $"✓ {primaryMap.Entries.Count}/{primaryMap.Entries.Count} Complete";
                         }
                         break;
 
@@ -308,22 +331,20 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         break;
 
                     case "android_ids":
-                        var aMaps = NativeSocialAudit.FindAllAchievementTierMaps();
-                        if (aMaps.Count > 0 && aMaps[0].Entries.Count > 0)
+                        if (primaryMap != null && primaryMap.Entries.Count > 0)
                         {
-                            int missing = aMaps[0].CountMissingGooglePlay();
-                            if (missing == 0) return $"✓ {aMaps[0].Entries.Count}/{aMaps[0].Entries.Count} Complete";
-                            return $"{aMaps[0].Entries.Count - missing}/{aMaps[0].Entries.Count} IDs";
+                            int missing = primaryMap.CountMissingGooglePlay();
+                            if (missing == 0) return $"✓ {primaryMap.Entries.Count}/{primaryMap.Entries.Count} Complete";
+                            return $"{primaryMap.Entries.Count - missing}/{primaryMap.Entries.Count} IDs";
                         }
                         break;
 
                     case "ios_ids":
-                        var iMaps = NativeSocialAudit.FindAllAchievementTierMaps();
-                        if (iMaps.Count > 0 && iMaps[0].Entries.Count > 0)
+                        if (primaryMap != null && primaryMap.Entries.Count > 0)
                         {
-                            int missing = iMaps[0].CountMissingApple();
-                            if (missing == 0) return $"✓ {iMaps[0].Entries.Count}/{iMaps[0].Entries.Count} Complete";
-                            return $"{iMaps[0].Entries.Count - missing}/{iMaps[0].Entries.Count} IDs";
+                            int missing = primaryMap.CountMissingApple();
+                            if (missing == 0) return $"✓ {primaryMap.Entries.Count}/{primaryMap.Entries.Count} Complete";
+                            return $"{primaryMap.Entries.Count - missing}/{primaryMap.Entries.Count} IDs";
                         }
                         break;
                 }
@@ -340,7 +361,10 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             int total = Items.Length;
             int done = Items.Count(i => EditorPrefs.GetBool(PrefKeyPrefix + i.Id, false) || !string.IsNullOrEmpty(GetAutoDetectedStatus(i.Id)));
-            _progressLabel.text = $"Progress: {done} / {total} verified ({done * 100 / total}%)";
+            int percent = total > 0 ? (done * 100 / total) : 0;
+            _progressLabel.text = $"Progress: {done} / {total} verified ({percent}%)";
+            if (_progressFill != null)
+                _progressFill.style.width = Length.Percent(percent);
         }
 
         private void ResetChecklist()
