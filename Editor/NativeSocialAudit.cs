@@ -47,9 +47,10 @@ namespace Wagenheimer.NativeSocial.Editor
     /// </summary>
     public static class NativeSocialAudit
     {
-        private const string CategoryPlatforms = "Platform SDKs";
-        private const string CategoryBootstrap = "Initialization";
-        private const string CategoryAchievements = "Achievement Mapping";
+        public const string CategoryCommon = "⚙️ Core & Mapping";
+        public const string CategorySteam = "🖥️ Steam (Steamworks.NET)";
+        public const string CategoryAndroid = "🤖 Android (Google Play Games)";
+        public const string CategoryIOS = "🍎 iOS (Game Center)";
 
         [MenuItem("Tools/Wagenheimer/Native Social/Verify Setup...", priority = 1)]
         public static void OpenWindow() => NativeSocialDashboardWindow.Open(NativeSocialDashboardWindow.Tab.SetupAudit);
@@ -68,90 +69,104 @@ namespace Wagenheimer.NativeSocial.Editor
         {
             var results = new List<AuditResult>();
 
-            AuditPlatformSdks(results);
-            AuditBootstrap(results);
-            AuditAchievementMapping(results);
+            AuditCommon(results);
+            AuditSteam(results);
+            AuditAndroid(results);
+            AuditIOS(results);
             AttachPrompts(results);
 
             return results;
         }
 
-        #region Platform SDKs
+        #region Core & Mapping
 
-        private static void AuditPlatformSdks(List<AuditResult> results)
+        private static void AuditCommon(List<AuditResult> results)
         {
-            bool gpgsFound = IsTypeAvailable("GooglePlayGames.PlayGamesPlatform");
-            string gpgsVersion = GpgsInstaller.GetInstalledVersion();
-            Add(results, CategoryPlatforms, "Google Play Games (Android)", gpgsFound,
-                !string.IsNullOrEmpty(gpgsVersion)
-                    ? $"Google Play Games installed via Git as the UPM package com.google.play.games v{gpgsVersion}."
-                    : "PlayGamesPlatform detected in the project (loose Assets/ import — not a resolvable UPM package).",
-                "Google Play Games plugin not detected: Android achievements/leaderboards will silently no-op.",
-                $"Installs Google's official plugin v{GpgsInstaller.PackageVersion} from its git repository as a UPM package (recommended: it also sets the scripting define automatically).",
-                "Install via Package Manager", () => GpgsInstaller.Install(),
-                AuditSeverity.Info,
-                whatIsThis: "This is Google's own SDK that lets your game report achievements/leaderboards to Google Play on Android. " +
-                            "NativeSocial talks to it automatically once it's installed — nothing to code. The plugin is consumed " +
-                            "straight from Google's git repository (the embedded com.google.play.games UPM package), so it installs " +
-                            "as a real package rather than loose files under Assets/.");
+            // 1. Check startup initialization in code or via bootstrap script
+            var (initFound, initScriptPath) = FindInitializeCallInProject();
+            bool hasBootstrapScript = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length > 0;
 
-            bool isIos = EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS;
-            Add(results, CategoryPlatforms, "Game Center (iOS)", isIos || true,
-                isIos ? "Active build target is iOS." : "Game Center is built into Unity/iOS; switches automatically when the build target is iOS.",
-                null, null, failSeverity: AuditSeverity.Info,
-                whatIsThis: "Apple's Game Center needs no separate plugin — it's part of Unity's iOS support. " +
-                            "This just confirms it's available; it only actually activates when you build for iOS.");
-
-            bool steamFound = IsTypeAvailable("Steamworks.SteamUserStats");
-            bool steamDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_STEAM");
-            Add(results, CategoryPlatforms, "Steamworks.NET (Steam)", !steamFound || steamDefine,
-                steamFound ? "Steamworks.NET detected and WAGENHEIMER_NATIVESOCIAL_STEAM is active." : "Steamworks.NET not installed (only needed for Steam builds).",
-                "Steamworks.NET is installed but WAGENHEIMER_NATIVESOCIAL_STEAM is not defined: Steam achievement calls will compile out.",
-                "Add the define to the active build target's Scripting Define Symbols.", "Add Define",
-                () => SetDefine("WAGENHEIMER_NATIVESOCIAL_STEAM", true), AuditSeverity.Warning,
-                whatIsThis: "WAGENHEIMER_NATIVESOCIAL_STEAM is a compiler switch: without it, every Steam achievement/stat call in " +
-                            "NativeSocial compiles to nothing (not even a runtime check — the code simply isn't there). This audit only " +
-                            "checks the *current Editor session's* Player Settings, which is why the 'Add Define' button only fixes local " +
-                            "testing. If you build through UnityBuildPipeline, the real, permanent fix is adding this define to your Steam " +
-                            "PublisherProfile asset's 'Scripting Defines' list — the pipeline applies it automatically for every Steam build " +
-                            "and reverts it afterwards, so this warning will keep showing here in the Editor even after you've set that up " +
-                            "correctly. That's expected: this check can't see build-time-only defines, only what's active right now.");
-
-            bool gpgsDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_GPGS");
-            if (gpgsFound)
+            if (initFound)
             {
-                Add(results, CategoryPlatforms, "GPGS scripting define active", gpgsDefine,
-                    "WAGENHEIMER_NATIVESOCIAL_GPGS is active (auto-set by the com.google.play.games version define).",
-                    "Google Play Games plugin found but WAGENHEIMER_NATIVESOCIAL_GPGS is not defined — verify it's installed as a package (not loose Assets/ files), since versionDefines only fires for a resolvable package version.",
-                    "Reinstalls the plugin from Google's git repository as a UPM package so the version define can activate (a loose Assets/ import never does). The loose copy is moved to the Trash first.",
-                    "Fix via Package Manager", () => GpgsInstaller.Install(),
+                Add(results, CategoryCommon, "Startup Initialization", true,
+                    $"NativeSocial.Initialize(...) detected in project code: '{initScriptPath}'.",
+                    null,
+                    whatIsThis: "NativeSocial is initialized at startup directly from your game code with your achievement maps.");
+            }
+            else if (hasBootstrapScript)
+            {
+                Add(results, CategoryCommon, "Startup Initialization", true,
+                    "NativeSocialBootstrap component found in project assets. Ensure it is placed in your startup/bootstrap scene.",
+                    null,
+                    whatIsThis: "NativeSocialBootstrap automatically loads your AchievementTierMap and calls NativeSocial.Initialize at scene start.");
+            }
+            else
+            {
+                Add(results, CategoryCommon, "Startup Initialization", false,
+                    null,
+                    "No initialization found: NativeSocial.Initialize(...) must be called once at startup (in your main game manager or via NativeSocialBootstrap), or achievement calls silently no-op.",
+                    "Generates NativeSocialBootstrap.cs linked to your AchievementTierMap asset.",
+                    "Generate NativeSocialBootstrap.cs",
+                    CreateBootstrapScriptAsset,
                     AuditSeverity.Warning,
-                    whatIsThis: "Same idea as the Steam define above, but this one is normally set FOR you: Unity's Package Manager has a " +
-                                "feature called 'Version Defines' that auto-adds WAGENHEIMER_NATIVESOCIAL_GPGS the moment it sees the Google " +
-                                "Play Games package installed correctly. If this shows a warning, it means Unity couldn't detect it as a proper " +
-                                "package — usually because the plugin was dropped as loose files under Assets/ instead of imported via the " +
-                                "Package Manager/git URL. No manual action needed if you're not shipping Android achievements yet; if you are, " +
-                                "reinstall the plugin the recommended way (UPM) and this clears itself on the next recompile.");
+                    whatIsThis: "NativeSocial requires a single Initialize() call before achievement progress can be reported.");
+            }
+
+            // 2. Check AchievementTierMap asset
+            var maps = FindAllAchievementTierMaps();
+            if (maps.Count == 0)
+            {
+                Add(results, CategoryCommon, "Achievement Tier Map Asset", false,
+                    null,
+                    "No AchievementTierMap asset found: there is nowhere to keep this game's per-platform achievement IDs.",
+                    "Creates an empty AchievementTierMap asset under Assets/Social.",
+                    "Create Achievement Tier Map",
+                    CreateAchievementTierMapAsset,
+                    AuditSeverity.Warning,
+                    whatIsThis: "AchievementTierMap holds all trophies and their corresponding platform IDs (Steam, Google Play, Apple Game Center).");
+            }
+            else
+            {
+                var map = maps[0];
+                int total = map.Entries.Count;
+                Add(results, CategoryCommon, "Achievement Tier Map Asset", total > 0,
+                    $"Found '{AssetDatabase.GetAssetPath(map)}' with {total} configured entries.",
+                    $"'{AssetDatabase.GetAssetPath(map)}' has 0 entries: no achievements will be reported.",
+                    "Add achievement entries to your AchievementTierMap asset.",
+                    "Select Map Asset", () => Selection.activeObject = map,
+                    AuditSeverity.Warning,
+                    whatIsThis: "Central asset containing all your trophies, points, and platform IDs.");
+
+                if (maps.Count > 1)
+                {
+                    results.Add(Result(CategoryCommon, "Multiple Achievement Tier Map assets", AuditSeverity.Info,
+                        $"{maps.Count} AchievementTierMap assets found; NativeSocial.Initialize should be built from exactly one."));
+                }
             }
         }
 
-        #endregion
-
-        #region Bootstrap
-
-        private static void AuditBootstrap(List<AuditResult> results)
+        internal static (bool Found, string ScriptPath) FindInitializeCallInProject()
         {
-            bool hasBootstrap = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length > 0;
-            Add(results, CategoryBootstrap, "Project bootstrap script", hasBootstrap,
-                "NativeSocialBootstrap found in project assets.",
-                "No bootstrap script found: NativeSocial.Initialize(...) must be called once at startup, or every Report/SubmitScore call silently no-ops.",
-                "Creates a starter NativeSocialBootstrap.cs from the package sample.", "Generate NativeSocialBootstrap.cs",
-                CreateBootstrapScriptAsset, AuditSeverity.Warning,
-                whatIsThis: "NativeSocial needs one line, NativeSocial.Initialize(...), called once before any achievement/leaderboard call, " +
-                            "so it knows your game's LocID → platform-ID mappings. 'Generate' only creates the .cs FILE under " +
-                            "Assets/Scripts/Social — it does NOT place it in any scene by itself. After generating, use the 'Add Bootstrap " +
-                            "to Scene' button below (in your project's bootstrap/splash scene, so it runs before anything else) to actually " +
-                            "create the GameObject with this component attached. Do that in whichever scene loads first at app startup.");
+            var guids = AssetDatabase.FindAssets("t:MonoScript");
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) continue;
+                if (path.IndexOf("NativeSocial", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (path.EndsWith("NativeSocialAudit.cs", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("NativeSocialAuditView.cs", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("NativeSocialBootstrap.cs", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+                if (script == null) continue;
+                var text = script.text;
+                if (!string.IsNullOrEmpty(text) && text.Contains("NativeSocial.Initialize"))
+                {
+                    return (true, path);
+                }
+            }
+            return (false, null);
         }
 
         internal static void CreateBootstrapScriptAsset()
@@ -167,22 +182,50 @@ namespace Wagenheimer.NativeSocial.Editor
                 return;
             }
 
-            const string samplePath = "Packages/com.wagenheimer.nativesocial/Samples~/DefaultSetup/NativeSocialBootstrap.cs";
-            string content = File.Exists(samplePath)
-                ? File.ReadAllText(samplePath)
-                : @"using UnityEngine;
+            const string content = @"using UnityEngine;
 using Wagenheimer.NativeSocial;
 
+/// <summary>
+/// Bootstrap component for NativeSocial.
+/// Automatically binds to an AchievementTierMap asset and calls NativeSocial.Initialize at startup.
+/// </summary>
 public class NativeSocialBootstrap : MonoBehaviour
 {
+    [Tooltip(""The AchievementTierMap containing all trophy definitions and platform IDs. If left empty, will try loading from Resources 'Social/AchievementTierMap' or finding any map asset."")]
+    [SerializeField] private AchievementTierMap tierMap;
+
+    [Tooltip(""Whether to mark this GameObject as persistent across scene loads."")]
+    [SerializeField] private bool dontDestroyOnLoad = true;
+
     private void Awake()
     {
-        var androidMap = new System.Collections.Generic.Dictionary<string, string>();
-        var iosMap = new System.Collections.Generic.Dictionary<string, string>();
-        var steamMap = new System.Collections.Generic.Dictionary<string, SteamEntry>();
+        if (dontDestroyOnLoad)
+            DontDestroyOnLoad(gameObject);
 
-        NativeSocial.Initialize(androidMap, iosMap, steamMap);
-        Debug.Log(""[NativeSocial] Initialized from Bootstrap."");
+        if (tierMap == null)
+        {
+            tierMap = Resources.Load<AchievementTierMap>(""Social/AchievementTierMap"");
+            if (tierMap == null)
+            {
+                var maps = Resources.FindObjectsOfTypeAll<AchievementTierMap>();
+                if (maps != null && maps.Length > 0) tierMap = maps[0];
+            }
+        }
+
+        if (tierMap != null)
+        {
+            NativeSocial.Initialize(
+                androidMap: tierMap.BuildAndroidMap(),
+                iosMap: tierMap.BuildIosMap(),
+                steamMap: tierMap.BuildSteamMap()
+            );
+            Debug.Log($""[NativeSocial] Initialized from '{tierMap.name}' ({tierMap.Entries.Count} entries)."");
+        }
+        else
+        {
+            NativeSocial.Initialize();
+            Debug.LogWarning(""[NativeSocial] Initialized with empty maps because no AchievementTierMap was found."");
+        }
     }
 }
 ";
@@ -210,10 +253,20 @@ public class NativeSocialBootstrap : MonoBehaviour
 
             var go = new GameObject("NativeSocialBootstrap");
             Undo.RegisterCreatedObjectUndo(go, "Create NativeSocialBootstrap");
-            go.AddComponent(type);
+            var comp = go.AddComponent(type);
+            var maps = FindAllAchievementTierMaps();
+            if (maps.Count > 0)
+            {
+                var so = new SerializedObject(comp);
+                var prop = so.FindProperty("tierMap");
+                if (prop != null)
+                {
+                    prop.objectReferenceValue = maps[0];
+                    so.ApplyModifiedProperties();
+                }
+            }
             Selection.activeGameObject = go;
-            Debug.Log("[NativeSocial] Created 'NativeSocialBootstrap' GameObject with the NativeSocialBootstrap component attached, in the active scene. " +
-                      "Remember: this only takes effect in scenes where it actually runs (e.g. your bootstrap/splash scene) — add it to every scene that can be an entry point, or make sure your bootstrap scene always loads first.");
+            Debug.Log("[NativeSocial] Created 'NativeSocialBootstrap' GameObject with the NativeSocialBootstrap component attached and linked to AchievementTierMap.");
         }
 
         private static Type FindBootstrapType() =>
@@ -223,60 +276,137 @@ public class NativeSocialBootstrap : MonoBehaviour
 
         #endregion
 
-        #region Achievement mapping
+        #region Steam
 
-        private static void AuditAchievementMapping(List<AuditResult> results)
+        private static void AuditSteam(List<AuditResult> results)
         {
-            var maps = FindAllAchievementTierMaps();
-            if (maps.Count == 0)
+            bool steamFound = IsTypeAvailable("Steamworks.SteamUserStats") ||
+                              UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(p => p.name == "com.rlabrecque.steamworks.net");
+            bool steamDefine = HasDefine("WAGENHEIMER_NATIVESOCIAL_STEAM");
+
+            Add(results, CategorySteam, "Steamworks.NET Plugin (Steam)", steamFound,
+                "Steamworks.NET is installed.",
+                "Steamworks.NET not installed (only required for Steam desktop builds).",
+                whatIsThis: "Steamworks.NET enables Steam achievement and stat synchronization for desktop builds.");
+
+            if (steamFound)
             {
-                Add(results, CategoryAchievements, "Achievement Tier Map asset", false,
-                    null, "No AchievementTierMap asset found: there is nowhere to keep this game's per-platform achievement IDs.",
-                    "Creates an empty AchievementTierMap asset under Assets/.", "Create Achievement Tier Map",
-                    CreateAchievementTierMapAsset, AuditSeverity.Warning,
-                    whatIsThis: "An AchievementTierMap is a single asset that lists every trophy your game has, with one row per trophy " +
-                                "holding its Google Play achievement ID, its Apple Game Center ID, and (for Steam) its stat/achievement API " +
-                                "name. The bootstrap script reads this asset and builds the dictionaries NativeSocial.Initialize needs.");
-                return;
+                Add(results, CategorySteam, "Steam Scripting Define Symbol", steamDefine,
+                    "WAGENHEIMER_NATIVESOCIAL_STEAM is active in the current build target.",
+                    "Steamworks.NET is installed but WAGENHEIMER_NATIVESOCIAL_STEAM is not defined in Player Settings. (Note: if you use UnityBuildPipeline/PublisherProfile, it applies defines automatically during build).",
+                    "Add the define to active build target's Scripting Define Symbols for local testing.",
+                    "Add Define", () => SetDefine("WAGENHEIMER_NATIVESOCIAL_STEAM", true),
+                    AuditSeverity.Info,
+                    whatIsThis: "Compiler switch for Steam achievement calls. Can be added to local PlayerSettings or configured in PublisherProfile for automated builds.");
             }
 
-            if (maps.Count > 1)
-                results.Add(Result(CategoryAchievements, "Multiple Achievement Tier Map assets", AuditSeverity.Info,
-                    $"{maps.Count} AchievementTierMap assets found; NativeSocial.Initialize should be built from exactly one."));
+            bool hasAppId = File.Exists("steam_appid.txt");
+            Add(results, CategorySteam, "Steam AppID File (Local Testing)", hasAppId,
+                "steam_appid.txt found in project root.",
+                "steam_appid.txt not found in project root (only needed for local Editor/standalone testing with Steam client).",
+                failSeverity: AuditSeverity.Info,
+                whatIsThis: "steam_appid.txt tells the Steam client which game is running during local development outside of the Steam launcher.");
 
-            foreach (var map in maps)
+            var maps = FindAllAchievementTierMaps();
+            if (maps.Count > 0)
             {
-                var path = AssetDatabase.GetAssetPath(map);
+                var map = maps[0];
                 int total = map.Entries.Count;
-                if (total == 0)
-                {
-                    results.Add(Result(CategoryAchievements, $"'{path}' has entries", AuditSeverity.Warning,
-                        "The map asset exists but has zero entries — nothing will be reported to any platform."));
-                    continue;
-                }
-
-                int missingGoogle = map.CountMissingGooglePlay();
-                int missingApple = map.CountMissingApple();
-                bool gpgsFound = IsTypeAvailable("GooglePlayGames.PlayGamesPlatform");
-
-                results.Add(Result(CategoryAchievements, $"'{path}': Google Play IDs",
-                    missingGoogle == 0 ? AuditSeverity.Pass : (gpgsFound ? AuditSeverity.Warning : AuditSeverity.Info),
-                    missingGoogle == 0
-                        ? $"All {total} entries have a Google Play achievement ID."
-                        : $"{missingGoogle} of {total} entries have no Google Play achievement ID yet (create the achievements in Google Play Console, then paste the IDs in).",
-                    whatIsThis: "Each achievement must first be created in Google Play Console (Play Console → your app → Grow → Achievements), " +
-                                "which gives you a long alphanumeric ID per achievement. Paste that ID into this map's matching row. Until " +
-                                "it's filled in, that trophy's unlock call on Android is skipped (no crash, just silently ignored)."));
-
-                results.Add(Result(CategoryAchievements, $"'{path}': Apple Game Center IDs",
-                    missingApple == 0 ? AuditSeverity.Pass : AuditSeverity.Info,
-                    missingApple == 0
-                        ? $"All {total} entries have an Apple Game Center ID."
-                        : $"{missingApple} of {total} entries have no Apple Game Center ID yet (create the achievements in App Store Connect, then paste the IDs in).",
-                    whatIsThis: "Same idea as Google Play IDs, but created in App Store Connect (Features → Game Center → Achievements) instead. " +
-                                "Marked Info rather than Warning because iOS/Game Center support is usually finished later in a project's life."));
+                int missingSteam = map.Entries.Count(e => string.IsNullOrEmpty(e.SteamStat));
+                Add(results, CategorySteam, "Steam Stat/Achievement Names", missingSteam == 0,
+                    $"All {total} achievement tiers have a SteamStat name assigned.",
+                    $"{missingSteam} of {total} achievement tiers are missing a SteamStat name.",
+                    "Configure SteamStat in your AchievementTierMap (e.g. Trophy{N}_{tier}_Status).",
+                    "Select Map Asset", () => Selection.activeObject = map,
+                    steamFound ? AuditSeverity.Warning : AuditSeverity.Info,
+                    whatIsThis: "Steam achievements use the stat/achievement API names configured in Steamworks Partner site.");
             }
         }
+
+        #endregion
+
+        #region Android
+
+        private static void AuditAndroid(List<AuditResult> results)
+        {
+            string gpgsVersion = GpgsInstaller.GetInstalledVersion();
+            bool gpgsPackageInstalled = !string.IsNullOrEmpty(gpgsVersion);
+            bool gpgsLoose = GpgsInstaller.FindLoosePluginRoots().Count > 0;
+            bool gpgsEditorType = IsTypeAvailable("GooglePlayGames.Editor.GPGSProjectSettings");
+            bool gpgsRuntimeType = IsTypeAvailable("GooglePlayGames.PlayGamesPlatform");
+            bool gpgsFound = gpgsPackageInstalled || gpgsLoose || gpgsEditorType || gpgsRuntimeType;
+
+            Add(results, CategoryAndroid, "Google Play Games Plugin (Android)", gpgsFound,
+                gpgsPackageInstalled
+                    ? $"Google Play Games is installed via Git as UPM package com.google.play.games v{gpgsVersion}."
+                    : (gpgsLoose ? "PlayGamesPlatform detected in project (loose Assets/ import — consider migrating to UPM)." : "Google Play Games plugin detected."),
+                "Google Play Games plugin not detected: Android achievements/leaderboards will silently no-op.",
+                $"Installs Google's official plugin v{GpgsInstaller.PackageVersion} from its git repository as a UPM package.",
+                "Install via Package Manager", () => GpgsInstaller.Install(),
+                AuditSeverity.Info,
+                whatIsThis: "Google's SDK for reporting achievements and leaderboards on Android. NativeSocial talks to it automatically once installed.");
+
+            bool gpgsDefine = gpgsPackageInstalled || HasDefine("WAGENHEIMER_NATIVESOCIAL_GPGS");
+            if (gpgsFound)
+            {
+                Add(results, CategoryAndroid, "GPGS Scripting Define Symbol", gpgsDefine,
+                    gpgsPackageInstalled
+                        ? "WAGENHEIMER_NATIVESOCIAL_GPGS is active automatically via com.google.play.games UPM versionDefine."
+                        : "WAGENHEIMER_NATIVESOCIAL_GPGS is active in Scripting Define Symbols.",
+                    "Google Play Games plugin found as loose files but WAGENHEIMER_NATIVESOCIAL_GPGS is not defined in Player Settings.",
+                    "Add WAGENHEIMER_NATIVESOCIAL_GPGS to Scripting Define Symbols or reinstall as UPM package.",
+                    "Add Define", () => SetDefine("WAGENHEIMER_NATIVESOCIAL_GPGS", true),
+                    AuditSeverity.Warning,
+                    whatIsThis: "WAGENHEIMER_NATIVESOCIAL_GPGS enables the GPGS integration inside NativeSocial.");
+            }
+
+            var maps = FindAllAchievementTierMaps();
+            if (maps.Count > 0)
+            {
+                var map = maps[0];
+                int total = map.Entries.Count;
+                int missingGoogle = map.CountMissingGooglePlay();
+                Add(results, CategoryAndroid, "Google Play Achievement IDs", missingGoogle == 0,
+                    $"All {total} achievement tiers have a Google Play ID assigned.",
+                    $"{missingGoogle} of {total} achievement tiers are missing a Google Play ID.",
+                    "Create achievements in Google Play Console (Play Console > Grow > Play Games Services > Achievements), then paste the alphanumeric IDs into the map asset.",
+                    "Select Map Asset", () => Selection.activeObject = map,
+                    gpgsFound ? AuditSeverity.Warning : AuditSeverity.Info,
+                    whatIsThis: "Each achievement must have its Google Play Console ID configured in your AchievementTierMap so it can unlock on Android.");
+            }
+        }
+
+        #endregion
+
+        #region iOS
+
+        private static void AuditIOS(List<AuditResult> results)
+        {
+            bool isIosTarget = EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS;
+            Add(results, CategoryIOS, "Apple Game Center Support", true,
+                isIosTarget ? "Active build target is iOS." : "Game Center is built directly into Unity iOS support.",
+                null,
+                whatIsThis: "Apple Game Center requires no third-party package; it is built into Unity's iOS runtime.");
+
+            var maps = FindAllAchievementTierMaps();
+            if (maps.Count > 0)
+            {
+                var map = maps[0];
+                int total = map.Entries.Count;
+                int missingApple = map.CountMissingApple();
+                Add(results, CategoryIOS, "Apple Game Center Achievement IDs", missingApple == 0,
+                    $"All {total} achievement tiers have an Apple Game Center ID assigned.",
+                    $"{missingApple} of {total} achievement tiers are missing an Apple Game Center ID.",
+                    "Create achievements in App Store Connect (Features > Game Center > Achievements) and paste their IDs into the map asset.",
+                    "Select Map Asset", () => Selection.activeObject = map,
+                    AuditSeverity.Info,
+                    whatIsThis: "Each achievement must have its App Store Connect ID configured in your AchievementTierMap to unlock on iOS.");
+            }
+        }
+
+        #endregion
+
+        #region Helpers
 
         internal static List<AchievementTierMap> FindAllAchievementTierMaps() =>
             AssetDatabase.FindAssets("t:AchievementTierMap")
@@ -297,10 +427,6 @@ public class NativeSocialBootstrap : MonoBehaviour
             Selection.activeObject = asset;
             Debug.Log($"[NativeSocial] Created '{path}'. Fill in TrophyNumber/Tier/SteamStat/GooglePlayId/AppleId for each achievement tier.");
         }
-
-        #endregion
-
-        #region Helpers
 
         private static void Add(List<AuditResult> results, string category, string title, bool pass, string passDetail,
             string failDetail, string hint = null, string fixLabel = null, Action fix = null, AuditSeverity failSeverity = AuditSeverity.Fail,

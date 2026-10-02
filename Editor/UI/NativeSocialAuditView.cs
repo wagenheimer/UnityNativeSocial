@@ -19,8 +19,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private List<AuditResult> _results;
         private AuditSeverity? _severityFilter;
+        private string _platformFilter;
         private VisualElement _resultsContainer;
-        private VisualElement _sdkContainer;
         private Label _summaryLabel;
 
         public NativeSocialAuditView()
@@ -34,49 +34,57 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private void HandleInstallCompleted()
         {
-            // The view is rebuilt when the Dashboard tab changes, so the old instance can be detached while
-            // an install is still running; drop its subscription instead of refreshing a dead tree.
             if (Root.panel == null)
             {
                 GpgsInstaller.OnInstallCompleted -= HandleInstallCompleted;
                 return;
             }
-            RefreshSdkCard();
+            RunAudit();
         }
 
         private void BuildUI()
         {
             var headerCard = NativeSocialUIStyle.CreateCard("🔍 Project Setup Verification Audit",
-                "Automated scan of platform SDKs, bootstrap wiring and achievement-ID mapping completeness. Most findings have a one-click fix.");
+                "Automated scan of platform SDKs, startup bootstrap wiring and achievement-ID mapping completeness across Steam, Android and iOS.");
 
             var actionsRow = Row();
             actionsRow.Add(NativeSocialUIStyle.CreateButton("▶ Run Audit Now", RunAudit, primary: true));
-            actionsRow.Add(NativeSocialUIStyle.CreateButton("All", () => SetFilter(null)));
-            actionsRow.Add(NativeSocialUIStyle.CreateButton("✕ Fails Only", () => SetFilter(AuditSeverity.Fail)));
-            actionsRow.Add(NativeSocialUIStyle.CreateButton("⚠ Warnings Only", () => SetFilter(AuditSeverity.Warning)));
-            headerCard.Add(actionsRow);
-
-            var copyRow = Row();
-            copyRow.Add(CreateCopyButton("📋 Copy Report", "Copy the full audit as Markdown.",
+            actionsRow.Add(CreateCopyButton("📋 Copy Report", "Copy the full audit as Markdown.",
                 () => _results != null ? NativeSocialAudit.ToMarkdown(_results) : null));
             var promptBtn = CreateCopyButton("🤖 Copy AI Fix Prompt (all)",
                 "Copy one ready-to-paste prompt that makes an AI agent fix every warning and failure.",
                 () => _results != null ? NativeSocialAudit.ToPromptMarkdown(_results) : null);
             promptBtn.AddToClassList("ns-btn-primary");
-            copyRow.Add(promptBtn);
-            headerCard.Add(copyRow);
+            actionsRow.Add(promptBtn);
+            headerCard.Add(actionsRow);
+
+            // Platform Filter Row
+            var platformRow = Row();
+            platformRow.Add(new Label("Platform:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
+            platformRow.Add(NativeSocialUIStyle.CreateButton("🌐 All Platforms", () => SetPlatformFilter(null)));
+            platformRow.Add(NativeSocialUIStyle.CreateButton("⚙️ Core", () => SetPlatformFilter(NativeSocialAudit.CategoryCommon)));
+            platformRow.Add(NativeSocialUIStyle.CreateButton("🖥️ Steam", () => SetPlatformFilter(NativeSocialAudit.CategorySteam)));
+            platformRow.Add(NativeSocialUIStyle.CreateButton("🤖 Android", () => SetPlatformFilter(NativeSocialAudit.CategoryAndroid)));
+            platformRow.Add(NativeSocialUIStyle.CreateButton("🍎 iOS", () => SetPlatformFilter(NativeSocialAudit.CategoryIOS)));
+            headerCard.Add(platformRow);
+
+            // Severity Filter Row
+            var severityRow = Row();
+            severityRow.Add(new Label("Severity:") { style = { unityFontStyleAndWeight = FontStyle.Bold, marginRight = 6, alignSelf = Align.Center } });
+            severityRow.Add(NativeSocialUIStyle.CreateButton("All Severities", () => SetSeverityFilter(null)));
+            severityRow.Add(NativeSocialUIStyle.CreateButton("✕ Fails Only", () => SetSeverityFilter(AuditSeverity.Fail)));
+            severityRow.Add(NativeSocialUIStyle.CreateButton("⚠ Warnings Only", () => SetSeverityFilter(AuditSeverity.Warning)));
+            headerCard.Add(severityRow);
 
             _summaryLabel = new Label("Running audit...");
             _summaryLabel.style.fontSize = 11;
             _summaryLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _summaryLabel.style.marginTop = 4;
             headerCard.Add(_summaryLabel);
 
             Root.Add(headerCard);
 
-            _sdkContainer = new VisualElement();
-            Root.Add(_sdkContainer);
-
-            var sceneCard = NativeSocialUIStyle.CreateCard("Scene Setup Actions", "Add the bootstrap or debug overlay directly to the currently open scene.");
+            var sceneCard = NativeSocialUIStyle.CreateCard("Scene Setup Actions", "Add the bootstrap component or in-game debug overlay directly to the active scene.");
             var sceneRow = Row();
             sceneRow.Add(NativeSocialUIStyle.CreateButton("Add Bootstrap to Scene", NativeSocialAudit.AddBootstrapToCurrentScene));
             sceneRow.Add(NativeSocialUIStyle.CreateButton("Add In-Game Debug Overlay to Scene", NativeSocialDebugOverlayEditor.AddDebugOverlayToScene));
@@ -93,49 +101,20 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             RefreshResults();
         }
 
-        private void SetFilter(AuditSeverity? filter)
+        private void SetPlatformFilter(string platform)
+        {
+            _platformFilter = platform;
+            RefreshResults();
+        }
+
+        private void SetSeverityFilter(AuditSeverity? filter)
         {
             _severityFilter = filter;
             RefreshResults();
         }
 
-        private void RefreshSdkCard()
-        {
-            if (_sdkContainer == null) return;
-            _sdkContainer.Clear();
-
-            var version = GpgsInstaller.GetInstalledVersion();
-            if (!string.IsNullOrEmpty(version))
-            {
-                // Installed via git UPM already — show the state as ready instead of offering to install it.
-                var card = NativeSocialUIStyle.CreateCard("Platform SDKs",
-                    "Google Play Games is installed from Google's git repository as a UPM package — no manual .unitypackage needed.");
-                var row = Row();
-                row.Add(NativeSocialUIStyle.CreateBadge("Ready", AuditSeverity.Pass));
-                var label = new Label($"Google Play Games — com.google.play.games v{version}");
-                label.style.color = NativeSocialUIStyle.ColorSuccess;
-                label.style.fontSize = 12;
-                label.style.marginLeft = 8;
-                label.style.unityFontStyleAndWeight = FontStyle.Bold;
-                row.Add(label);
-                row.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
-                card.Add(row);
-                _sdkContainer.Add(card);
-                return;
-            }
-
-            var installCard = NativeSocialUIStyle.CreateCard("Platform SDK Actions",
-                "Install the official Google Play Games plugin as a UPM package (recommended over the manual .unitypackage import).");
-            var sdkRow = Row();
-            sdkRow.Add(NativeSocialUIStyle.CreateButton("⬇ Install Google Play Games (UPM)", () => GpgsInstaller.Install(), primary: true));
-            sdkRow.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
-            installCard.Add(sdkRow);
-            _sdkContainer.Add(installCard);
-        }
-
         private void RefreshResults()
         {
-            RefreshSdkCard();
             _resultsContainer.Clear();
             if (_results == null || _results.Count == 0)
             {
@@ -145,7 +124,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             UpdateSummary();
 
-            var filtered = _results.Where(r => !_severityFilter.HasValue || r.Severity == _severityFilter.Value);
+            var filtered = _results.Where(r =>
+                (!_severityFilter.HasValue || r.Severity == _severityFilter.Value) &&
+                (string.IsNullOrEmpty(_platformFilter) || r.Category == _platformFilter)
+            ).ToList();
+
+            if (filtered.Count == 0)
+            {
+                _resultsContainer.Add(NativeSocialUIStyle.CreateCallout("No audit results match the selected filter."));
+                return;
+            }
+
             foreach (var group in filtered.GroupBy(r => r.Category))
             {
                 var card = NativeSocialUIStyle.CreateCard(group.Key);
@@ -233,8 +222,6 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             try { item.Fix(); }
             catch (Exception ex) { Debug.LogError($"[NativeSocial] Fix '{item.FixLabel}' failed: {ex.Message}"); }
 
-            // A GPGS install is asynchronous (UPM resolve + recompile); re-running now would just show the
-            // same finding again. The installer tells the user to re-run the audit once it finishes.
             if (!GpgsInstaller.IsInstalling)
                 RunAudit();
         }
