@@ -144,8 +144,13 @@ opens a UI Toolkit dashboard with five tabs:
   still missing a Google Play/Apple ID, and an **"⬆ Export for AppDeployHub"** button (see below).
 - **Live Tester** — exercises `Authenticate`/`Report`/`SubmitScore` against whichever platform SDK
   is active, for quick manual testing in Play Mode.
-- **Checklist** — a persistent (per-machine, `EditorPrefs`-backed) release checklist covering Setup,
-  Google Play Console, App Store Connect, Steam and Release items.
+- **Checklist** — a persistent (per-machine, `EditorPrefs`-backed) release checklist. It opens with a
+  "How the integration works" summary and then spells out, in detail and per platform, everything needed
+  for **Steam** (Steamworks.NET define/`SteamReady`/partner-site stats), **Android** (Google Play Games
+  install/define/OAuth/IDs/sign-in/device test) and **iOS** (Game Center capability/IDs/auth/device test),
+  plus the Google Play Console, App Store Connect, Steamworks partner-site and release steps. Projects
+  that already sync Steam directly (a `SteamManager`-style script) get an explicit reminder that only one
+  owner per platform should report, so a trophy isn't unlocked twice.
 - **Docs & Updates** — the code snippets below, ready to copy, plus the update checker.
 
 ## Achievement Tier Map (recommended integration)

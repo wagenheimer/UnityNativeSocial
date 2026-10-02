@@ -57,8 +57,25 @@ namespace Wagenheimer.NativeSocial.Editor
         /// <summary>True while an install/resolve kicked off by this installer is still running.</summary>
         public static bool IsInstalling { get; private set; }
 
-        public static bool IsInstalled() =>
-            PackageInfo.GetAllRegisteredPackages().Any(p => p.name == PackageId);
+        /// <summary>Raised (success or failure) after an install started by this installer finishes.</summary>
+        public static event Action OnInstallCompleted;
+
+        /// <summary>Version of the registered <c>com.google.play.games</c> UPM package, or null when it
+        /// is not installed (a loose <c>Assets/</c> import is not a registered package and returns null).</summary>
+        public static string GetInstalledVersion()
+        {
+            try
+            {
+                return PackageInfo.GetAllRegisteredPackages()
+                    .FirstOrDefault(p => p.name == PackageId)?.version;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static bool IsInstalled() => !string.IsNullOrEmpty(GetInstalledVersion());
 
         /// <summary>
         /// Finds loose (non-UPM) copies of the plugin imported under <c>Assets/</c>, e.g.
@@ -96,6 +113,9 @@ namespace Wagenheimer.NativeSocial.Editor
 
         [MenuItem("Tools/Wagenheimer/Native Social/Install Google Play Games (UPM)...", priority = 2)]
         public static void InstallMenu() => Install();
+
+        [MenuItem("Tools/Wagenheimer/Native Social/Install Google Play Games (UPM)...", true)]
+        private static bool InstallMenuValidate() => !IsInstalled();
 
         public static void Install() => Install(null);
 
@@ -177,6 +197,7 @@ namespace Wagenheimer.NativeSocial.Editor
                 var cb = _onComplete;
                 _onComplete = null;
                 AssetDatabase.Refresh();
+                OnInstallCompleted?.Invoke();
                 EditorUtility.DisplayDialog("Finished",
                     $"{PackageDisplayName} has been added to the project. Unity is resolving packages and will " +
                     "recompile shortly — re-run Tools > Wagenheimer > Native Social > Verify Setup when it finishes.",
@@ -216,6 +237,7 @@ namespace Wagenheimer.NativeSocial.Editor
             _onComplete = null;
 
             Debug.LogError($"[NativeSocial] Failed to install '{step.Id}': {error}");
+            OnInstallCompleted?.Invoke();
             EditorUtility.DisplayDialog("Installation failed",
                 $"Could not install {step.Id}.\n\n{error}\n\n" +
                 "You can add it manually in the Package Manager (Add package from git URL):\n" + step.Spec, "OK");

@@ -20,14 +20,28 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private List<AuditResult> _results;
         private AuditSeverity? _severityFilter;
         private VisualElement _resultsContainer;
+        private VisualElement _sdkContainer;
         private Label _summaryLabel;
 
         public NativeSocialAuditView()
         {
             Root = new VisualElement();
             NativeSocialUIStyle.Apply(Root);
+            GpgsInstaller.OnInstallCompleted += HandleInstallCompleted;
             BuildUI();
             RunAudit();
+        }
+
+        private void HandleInstallCompleted()
+        {
+            // The view is rebuilt when the Dashboard tab changes, so the old instance can be detached while
+            // an install is still running; drop its subscription instead of refreshing a dead tree.
+            if (Root.panel == null)
+            {
+                GpgsInstaller.OnInstallCompleted -= HandleInstallCompleted;
+                return;
+            }
+            RefreshSdkCard();
         }
 
         private void BuildUI()
@@ -59,13 +73,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             Root.Add(headerCard);
 
-            var sdkCard = NativeSocialUIStyle.CreateCard("Platform SDK Actions",
-                "Install the official Google Play Games plugin as a UPM package (recommended over the manual .unitypackage import).");
-            var sdkRow = Row();
-            sdkRow.Add(NativeSocialUIStyle.CreateButton("⬇ Install Google Play Games (UPM)", () => GpgsInstaller.Install(), primary: true));
-            sdkRow.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
-            sdkCard.Add(sdkRow);
-            Root.Add(sdkCard);
+            _sdkContainer = new VisualElement();
+            Root.Add(_sdkContainer);
 
             var sceneCard = NativeSocialUIStyle.CreateCard("Scene Setup Actions", "Add the bootstrap or debug overlay directly to the currently open scene.");
             var sceneRow = Row();
@@ -90,8 +99,43 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             RefreshResults();
         }
 
+        private void RefreshSdkCard()
+        {
+            if (_sdkContainer == null) return;
+            _sdkContainer.Clear();
+
+            var version = GpgsInstaller.GetInstalledVersion();
+            if (!string.IsNullOrEmpty(version))
+            {
+                // Installed via git UPM already — show the state as ready instead of offering to install it.
+                var card = NativeSocialUIStyle.CreateCard("Platform SDKs",
+                    "Google Play Games is installed from Google's git repository as a UPM package — no manual .unitypackage needed.");
+                var row = Row();
+                row.Add(NativeSocialUIStyle.CreateBadge("Ready", AuditSeverity.Pass));
+                var label = new Label($"Google Play Games — com.google.play.games v{version}");
+                label.style.color = NativeSocialUIStyle.ColorSuccess;
+                label.style.fontSize = 12;
+                label.style.marginLeft = 8;
+                label.style.unityFontStyleAndWeight = FontStyle.Bold;
+                row.Add(label);
+                row.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
+                card.Add(row);
+                _sdkContainer.Add(card);
+                return;
+            }
+
+            var installCard = NativeSocialUIStyle.CreateCard("Platform SDK Actions",
+                "Install the official Google Play Games plugin as a UPM package (recommended over the manual .unitypackage import).");
+            var sdkRow = Row();
+            sdkRow.Add(NativeSocialUIStyle.CreateButton("⬇ Install Google Play Games (UPM)", () => GpgsInstaller.Install(), primary: true));
+            sdkRow.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
+            installCard.Add(sdkRow);
+            _sdkContainer.Add(installCard);
+        }
+
         private void RefreshResults()
         {
+            RefreshSdkCard();
             _resultsContainer.Clear();
             if (_results == null || _results.Count == 0)
             {

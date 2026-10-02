@@ -81,8 +81,11 @@ namespace Wagenheimer.NativeSocial.Editor
         private static void AuditPlatformSdks(List<AuditResult> results)
         {
             bool gpgsFound = IsTypeAvailable("GooglePlayGames.PlayGamesPlatform");
+            string gpgsVersion = GpgsInstaller.GetInstalledVersion();
             Add(results, CategoryPlatforms, "Google Play Games (Android)", gpgsFound,
-                "PlayGamesPlatform detected in the project.",
+                !string.IsNullOrEmpty(gpgsVersion)
+                    ? $"Google Play Games installed via Git as the UPM package com.google.play.games v{gpgsVersion}."
+                    : "PlayGamesPlatform detected in the project (loose Assets/ import — not a resolvable UPM package).",
                 "Google Play Games plugin not detected: Android achievements/leaderboards will silently no-op.",
                 $"Installs Google's official plugin v{GpgsInstaller.PackageVersion} from its git repository as a UPM package (recommended: it also sets the scripting define automatically).",
                 "Install via Package Manager", () => GpgsInstaller.Install(),

@@ -60,10 +60,13 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   AppDeployHub side lives in its `AchievementExchange` / `AchievementImportService` and must be kept in sync by hand.
   `Editor/AssemblyInfo.cs` exposes internals to `Wagenheimer.NativeSocial.EditorTests`.
 - `Editor/NativeSocialDashboardWindow.cs` + `Editor/UI/*` — UI Toolkit dashboard (`ns-` USS prefix), same
-  structure as `UnityRewiredHelper`'s: **Setup Audit**, **Achievements** (lists every `AchievementTierMap`
+  structure as `UnityRewiredHelper`'s:   **Setup Audit**, **Achievements** (lists every `AchievementTierMap`
   asset, per-platform fill-in counts, Create New Map), **Live Tester** (`NativeSocialHelperView.cs` —
-  Authenticate/Report/SubmitScore), **Checklist** (`EditorPrefs`-persisted, `nativesocial_chk_` prefix),
-  **Docs & Updates**. Menu items: `Tools/Wagenheimer/Native Social/Dashboard...` (priority 0),
+  Authenticate/Report/SubmitScore), **Checklist** (`EditorPrefs`-persisted, `nativesocial_chk_` prefix —
+  `NativeSocialChecklistView.cs` is the detailed per-platform guide: a "How the integration works" card plus
+  Project setup / Steam / Android / iOS / Google Play Console / App Store Connect / Steamworks partner site /
+  Release groups; keep every group's `Category` string matching an entry in the `Items` array or the items
+  silently don't render), **Docs & Updates**. Menu items: `Tools/Wagenheimer/Native Social/Dashboard...` (priority 0),
   `.../Verify Setup...` (priority 1, opens the Setup Audit tab directly).
 - `Editor/PackageHubBootstrap/` — copied from `UnityIAPHelper`'s, renamed to the
   `Wagenheimer.NativeSocial.PackageHubBootstrap` namespace. Own `.asmdef`, not merged into the main Editor
