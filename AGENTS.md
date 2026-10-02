@@ -38,6 +38,14 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   strings for an I2 language, and `AchievementI2Tools` fills default term keys / generates missing terms — the UI
   preview and the AppDeployHub exporter both go through the resolver so they can't disagree. Tier numeral
   (I/II/III) is appended only to names resolved from a shared I2 term (`AppendTierNumeral`), never to literals.
+- `Editor/GpgsInstaller.cs` — one-click installer for the official Google Play Games plugin, exposed as the
+  Setup Audit's GPGS fix button, a "Platform SDK Actions" card, and a menu item. Installs the UPM package
+  embedded in Google's repo (`https://github.com/playgameservices/play-games-plugin-for-unity.git?path=Assets/Public/GooglePlayGames/com.google.play.games#v2.3.0`)
+  via `Client.Add`, so it resolves as `com.google.play.games` and the asmdef's `versionDefines` sets
+  `WAGENHEIMER_NATIVESOCIAL_GPGS`. It also installs EDM4U (git) first when absent, because GPGS' package.json
+  depends on it, and moves any loose `Assets/GooglePlayGames` copy to the Trash (a duplicate-types failure
+  otherwise). Never revert this to `Application.OpenURL` — the whole point is that the .unitypackage install
+  can't set the define.
 - `Editor/UI/AchievementMapEditorView.cs` — the card-per-trophy achievement editor, shared by the Dashboard's
   Achievements tab and `AchievementTierMapInspector` (custom Inspector). Don't fork it into two copies — the
   UnityBuildPipeline Publishers UI drifted exactly that way.

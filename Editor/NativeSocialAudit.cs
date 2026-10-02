@@ -84,11 +84,13 @@ namespace Wagenheimer.NativeSocial.Editor
             Add(results, CategoryPlatforms, "Google Play Games (Android)", gpgsFound,
                 "PlayGamesPlatform detected in the project.",
                 "Google Play Games plugin not detected: Android achievements/leaderboards will silently no-op.",
-                "Install the official Google Play Games Plugin for Unity (v2, GDK-based).", "Get the plugin",
-                () => Application.OpenURL("https://github.com/playgameservices/play-games-plugin-for-unity"),
+                $"Installs Google's official plugin v{GpgsInstaller.PackageVersion} from its git repository as a UPM package (recommended: it also sets the scripting define automatically).",
+                "Install via Package Manager", () => GpgsInstaller.Install(),
                 AuditSeverity.Info,
                 whatIsThis: "This is Google's own SDK that lets your game report achievements/leaderboards to Google Play on Android. " +
-                            "NativeSocial talks to it automatically once it's installed — nothing to code.");
+                            "NativeSocial talks to it automatically once it's installed — nothing to code. The plugin is consumed " +
+                            "straight from Google's git repository (the embedded com.google.play.games UPM package), so it installs " +
+                            "as a real package rather than loose files under Assets/.");
 
             bool isIos = EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS;
             Add(results, CategoryPlatforms, "Game Center (iOS)", isIos || true,
@@ -118,7 +120,9 @@ namespace Wagenheimer.NativeSocial.Editor
                 Add(results, CategoryPlatforms, "GPGS scripting define active", gpgsDefine,
                     "WAGENHEIMER_NATIVESOCIAL_GPGS is active (auto-set by the com.google.play.games version define).",
                     "Google Play Games plugin found but WAGENHEIMER_NATIVESOCIAL_GPGS is not defined — verify it's installed as a package (not loose Assets/ files), since versionDefines only fires for a resolvable package version.",
-                    failSeverity: AuditSeverity.Warning,
+                    "Reinstalls the plugin from Google's git repository as a UPM package so the version define can activate (a loose Assets/ import never does). The loose copy is moved to the Trash first.",
+                    "Fix via Package Manager", () => GpgsInstaller.Install(),
+                    AuditSeverity.Warning,
                     whatIsThis: "Same idea as the Steam define above, but this one is normally set FOR you: Unity's Package Manager has a " +
                                 "feature called 'Version Defines' that auto-adds WAGENHEIMER_NATIVESOCIAL_GPGS the moment it sees the Google " +
                                 "Play Games package installed correctly. If this shows a warning, it means Unity couldn't detect it as a proper " +

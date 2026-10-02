@@ -59,6 +59,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             Root.Add(headerCard);
 
+            var sdkCard = NativeSocialUIStyle.CreateCard("Platform SDK Actions",
+                "Install the official Google Play Games plugin as a UPM package (recommended over the manual .unitypackage import).");
+            var sdkRow = Row();
+            sdkRow.Add(NativeSocialUIStyle.CreateButton("⬇ Install Google Play Games (UPM)", () => GpgsInstaller.Install(), primary: true));
+            sdkRow.Add(NativeSocialUIStyle.CreateButton("↗ Open GPGS repository", () => Application.OpenURL(GpgsInstaller.RepoUrl)));
+            sdkCard.Add(sdkRow);
+            Root.Add(sdkCard);
+
             var sceneCard = NativeSocialUIStyle.CreateCard("Scene Setup Actions", "Add the bootstrap or debug overlay directly to the currently open scene.");
             var sceneRow = Row();
             sceneRow.Add(NativeSocialUIStyle.CreateButton("Add Bootstrap to Scene", NativeSocialAudit.AddBootstrapToCurrentScene));
@@ -180,7 +188,11 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         {
             try { item.Fix(); }
             catch (Exception ex) { Debug.LogError($"[NativeSocial] Fix '{item.FixLabel}' failed: {ex.Message}"); }
-            RunAudit();
+
+            // A GPGS install is asynchronous (UPM resolve + recompile); re-running now would just show the
+            // same finding again. The installer tells the user to re-run the audit once it finishes.
+            if (!GpgsInstaller.IsInstalling)
+                RunAudit();
         }
 
         private static Label CreateText(string text, int size, FontStyle style, Color color)

@@ -17,6 +17,19 @@ v2+ (`com.google.play.games` package) — the same plugin also provides the achi
 IDs you map in `Initialize`. The `Authenticate`/`ManuallyAuthenticate`/`GetServerAuthCode` APIs
 require plugin v11+.
 
+Google ships the plugin as a UPM package embedded in its repository, so it can be installed directly
+from Git (the recommended method — it makes Unity's Version Define set `WAGENHEIMER_NATIVESOCIAL_GPGS`
+automatically). The Setup Audit's **"⬇ Install Google Play Games (UPM)"** button (or
+`Tools > Wagenheimer > Native Social > Install Google Play Games (UPM)...`) does this for you; manually:
+
+```
+https://github.com/playgameservices/play-games-plugin-for-unity.git?path=Assets/Public/GooglePlayGames/com.google.play.games#v2.3.0
+```
+
+> Importing the `.unitypackage` from the release page instead installs *loose* files under
+> `Assets/GooglePlayGames`, which are **not** a resolvable package — the version define never fires and
+> every Android call compiles out silently. The one-click installer detects that layout and migrates it.
+
 ## Installation
 
 ### Via Unity Package Manager (Git URL)
@@ -124,7 +137,9 @@ opens a UI Toolkit dashboard with five tabs:
 
 - **Setup Audit** — automated checks for GPGS/Steamworks presence and scripting defines, bootstrap
   script presence, and achievement-mapping completeness (see below), each with a one-click fix where
-  possible, plus "Copy Report" / "Copy AI Fix Prompt" buttons.
+  possible, plus "Copy Report" / "Copy AI Fix Prompt" buttons. When the Google Play Games plugin is
+  missing or was imported as loose `Assets/` files, the fix installs it from Google's Git repository as
+  a proper UPM package (moving any loose copy to the Trash first), which also activates the scripting define.
 - **Achievements** — lists every `AchievementTierMap` asset in the project, how many entries are
   still missing a Google Play/Apple ID, and an **"⬆ Export for AppDeployHub"** button (see below).
 - **Live Tester** — exercises `Authenticate`/`Report`/`SubmitScore` against whichever platform SDK
