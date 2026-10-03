@@ -160,7 +160,7 @@ namespace Wagenheimer.NativeSocial
                 ? 100.0
                 : Math.Min((double)current / total * 100.0, 99.0);
 
-            GameCenterPlatform.ReportProgress(gcId, percent, success =>
+            Social.ReportProgress(gcId, percent, success =>
             {
                 if (!success)
                     Debug.LogWarning($"[NativeSocial] iOS ReportProgress failed for {gcId} ({percent:F1}%)");
@@ -269,7 +269,7 @@ namespace Wagenheimer.NativeSocial
             {
                 if (locId == null) continue;
                 if (_iosMap.TryGetValue(locId, out var gcId))
-                    GameCenterPlatform.ReportProgress(gcId, 100.0, _ => { });
+                    Social.ReportProgress(gcId, 100.0, _ => { });
             }
         }
 #endif
@@ -317,7 +317,7 @@ namespace Wagenheimer.NativeSocial
             PlayGamesPlatform.Instance.ShowAchievementsUI();
             return true;
 #elif UNITY_IOS
-            GameCenterPlatform.ShowAchievementsUI();
+            Social.ShowAchievementsUI();
             return true;
 #else
             // Steam/standalone: no native UI exists to show, so the caller must provide its own.
@@ -365,9 +365,11 @@ namespace Wagenheimer.NativeSocial
             }
             return false;
 #elif UNITY_IOS
-            if (locId != null && _iosLeaderboardMap.TryGetValue(locId, out var iosId))
+            if (locId != null && _iosLeaderboardMap.ContainsKey(locId))
             {
-                GameCenterPlatform.ShowLeaderboardUI(iosId, UnityEngine.SocialPlatforms.TimeScope.AllTime, _ => { });
+                // Unity's Social API only exposes the default Game Center leaderboards screen
+                // (there is no per-leaderboard overload), so open that view for the mapped locId.
+                Social.ShowLeaderboardUI();
                 return true;
             }
             return false;
