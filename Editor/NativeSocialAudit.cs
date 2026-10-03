@@ -26,6 +26,9 @@ namespace Wagenheimer.NativeSocial.Editor
         public string Detail;
         public string FixHint;
 
+        /// <summary>Path to the source file or asset detected by this check (e.g. "Assets/.../Main.cs"), if any.</summary>
+        public string AssetPath;
+
         /// <summary>Plain-language explanation of what this check is, why it exists and how it behaves —
         /// shown under the title so a developer unfamiliar with platform SDKs understands the finding
         /// without needing to read source code.</summary>
@@ -152,7 +155,9 @@ namespace Wagenheimer.NativeSocial.Editor
         private static void AuditCommon(List<AuditResult> results)
         {
             var code = AnalyzeProjectCode(forceRefresh: true);
-            bool hasBootstrapScript = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript").Length > 0;
+            var bootstrapGuids = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript");
+            bool hasBootstrapScript = bootstrapGuids.Length > 0;
+            string bootstrapPath = hasBootstrapScript ? AssetDatabase.GUIDToAssetPath(bootstrapGuids[0]) : null;
 
             // 1. Startup Initialization
             if (code.HasInitialize)
@@ -160,14 +165,16 @@ namespace Wagenheimer.NativeSocial.Editor
                 Add(results, CategoryCommon, "Startup Initialization", true,
                     $"NativeSocial.Initialize(...) detected in project code: '{code.InitializePath}'.",
                     null,
-                    whatIsThis: "NativeSocial is initialized at startup directly from your game code with your achievement maps.");
+                    whatIsThis: "NativeSocial is initialized at startup directly from your game code with your achievement maps.",
+                    assetPath: code.InitializePath);
             }
             else if (hasBootstrapScript)
             {
                 Add(results, CategoryCommon, "Startup Initialization", true,
                     "NativeSocialBootstrap component found in project assets. Ensure it is placed in your startup/bootstrap scene.",
                     null,
-                    whatIsThis: "NativeSocialBootstrap automatically loads your AchievementTierMap and calls NativeSocial.Initialize at scene start.");
+                    whatIsThis: "NativeSocialBootstrap automatically loads your AchievementTierMap and calls NativeSocial.Initialize at scene start.",
+                    assetPath: bootstrapPath);
             }
             else
             {
@@ -187,7 +194,8 @@ namespace Wagenheimer.NativeSocial.Editor
                 Add(results, CategoryCommon, "Progress Reporting Calls", true,
                     $"NativeSocial.Report(...) call detected in project code: '{code.ReportPath}'.",
                     null,
-                    whatIsThis: "Gameplay code dispatches achievement progress through NativeSocial.Report(...) without platform-specific code.");
+                    whatIsThis: "Gameplay code dispatches achievement progress through NativeSocial.Report(...) without platform-specific code.",
+                    assetPath: code.ReportPath);
             }
             else
             {
@@ -217,13 +225,15 @@ namespace Wagenheimer.NativeSocial.Editor
             {
                 var map = maps[0];
                 int total = map.Entries.Count;
+                var mapPath = AssetDatabase.GetAssetPath(map);
                 Add(results, CategoryCommon, "Achievement Tier Map Asset", total > 0,
-                    $"Found '{AssetDatabase.GetAssetPath(map)}' with {total} configured entries.",
-                    $"'{AssetDatabase.GetAssetPath(map)}' has 0 entries: no achievements will be reported.",
+                    $"Found '{mapPath}' with {total} configured entries.",
+                    $"'{mapPath}' has 0 entries: no achievements will be reported.",
                     "Add achievement entries to your AchievementTierMap asset.",
                     "Select Map Asset", () => Selection.activeObject = map,
                     AuditSeverity.Warning,
-                    whatIsThis: "Central asset containing all your trophies, points, and platform IDs.");
+                    whatIsThis: "Central asset containing all your trophies, points, and platform IDs.",
+                    assetPath: mapPath);
 
                 if (maps.Count > 1)
                 {
@@ -374,13 +384,15 @@ public class NativeSocialBootstrap : MonoBehaviour
                 "steam_appid.txt found in project root.",
                 "steam_appid.txt not found in project root (only needed for local Editor/standalone testing with Steam client).",
                 failSeverity: AuditSeverity.Info,
-                whatIsThis: "steam_appid.txt tells the Steam client which game is running during local development outside of the Steam launcher.");
+                whatIsThis: "steam_appid.txt tells the Steam client which game is running during local development outside of the Steam launcher.",
+                assetPath: hasAppId ? "steam_appid.txt" : null);
 
             var maps = FindAllAchievementTierMaps();
             if (maps.Count > 0)
             {
                 var map = maps[0];
                 int total = map.Entries.Count;
+                var mapPath = AssetDatabase.GetAssetPath(map);
                 int missingSteam = map.Entries.Count(e => string.IsNullOrEmpty(e.SteamStat));
                 Add(results, CategorySteam, "Steam Stat/Achievement Names", missingSteam == 0,
                     $"All {total} achievement tiers have a SteamStat name assigned.",
@@ -388,7 +400,8 @@ public class NativeSocialBootstrap : MonoBehaviour
                     "Configure SteamStat in your AchievementTierMap (e.g. Trophy{N}_{tier}_Status).",
                     "Select Map Asset", () => Selection.activeObject = map,
                     steamFound ? AuditSeverity.Warning : AuditSeverity.Info,
-                    whatIsThis: "Steam achievements use the stat/achievement API names configured in Steamworks Partner site.");
+                    whatIsThis: "Steam achievements use the stat/achievement API names configured in Steamworks Partner site.",
+                    assetPath: mapPath);
             }
         }
 
@@ -434,6 +447,7 @@ public class NativeSocialBootstrap : MonoBehaviour
             {
                 var map = maps[0];
                 int total = map.Entries.Count;
+                var mapPath = AssetDatabase.GetAssetPath(map);
                 int missingGoogle = map.CountMissingGooglePlay();
                 Add(results, CategoryAndroid, "Google Play Achievement IDs", missingGoogle == 0,
                     $"All {total} achievement tiers have a Google Play ID assigned.",
@@ -441,7 +455,8 @@ public class NativeSocialBootstrap : MonoBehaviour
                     "Create achievements in Google Play Console (Play Console > Grow > Play Games Services > Achievements), then paste the alphanumeric IDs into the map asset.",
                     "Select Map Asset", () => Selection.activeObject = map,
                     gpgsFound ? AuditSeverity.Warning : AuditSeverity.Info,
-                    whatIsThis: "Each achievement must have its Google Play Console ID configured in your AchievementTierMap so it can unlock on Android.");
+                    whatIsThis: "Each achievement must have its Google Play Console ID configured in your AchievementTierMap so it can unlock on Android.",
+                    assetPath: mapPath);
             }
         }
 
@@ -462,6 +477,7 @@ public class NativeSocialBootstrap : MonoBehaviour
             {
                 var map = maps[0];
                 int total = map.Entries.Count;
+                var mapPath = AssetDatabase.GetAssetPath(map);
                 int missingApple = map.CountMissingApple();
                 Add(results, CategoryIOS, "Apple Game Center Achievement IDs", missingApple == 0,
                     $"All {total} achievement tiers have an Apple Game Center ID assigned.",
@@ -469,13 +485,32 @@ public class NativeSocialBootstrap : MonoBehaviour
                     "Create achievements in App Store Connect (Features > Game Center > Achievements) and paste their IDs into the map asset.",
                     "Select Map Asset", () => Selection.activeObject = map,
                     AuditSeverity.Info,
-                    whatIsThis: "Each achievement must have its App Store Connect ID configured in your AchievementTierMap to unlock on iOS.");
+                    whatIsThis: "Each achievement must have its App Store Connect ID configured in your AchievementTierMap to unlock on iOS.",
+                    assetPath: mapPath);
             }
         }
 
         #endregion
 
         #region Helpers
+
+        public static void OpenAssetOrFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+
+            var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (obj != null)
+            {
+                AssetDatabase.OpenAsset(obj);
+                EditorGUIUtility.PingObject(obj);
+                return;
+            }
+
+            if (File.Exists(path))
+            {
+                UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(path, 1);
+            }
+        }
 
         internal static List<AchievementTierMap> FindAllAchievementTierMaps() =>
             AssetDatabase.FindAssets("t:AchievementTierMap")
@@ -516,9 +551,10 @@ public class NativeSocialBootstrap : MonoBehaviour
 
         private static void Add(List<AuditResult> results, string category, string title, bool pass, string passDetail,
             string failDetail, string hint = null, string fixLabel = null, Action fix = null, AuditSeverity failSeverity = AuditSeverity.Fail,
-            string whatIsThis = null)
+            string whatIsThis = null, string assetPath = null)
         {
             var result = Result(category, title, pass ? AuditSeverity.Pass : failSeverity, pass ? passDetail : failDetail, whatIsThis);
+            result.AssetPath = assetPath;
             if (!pass)
             {
                 result.FixHint = hint;

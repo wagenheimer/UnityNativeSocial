@@ -245,6 +245,29 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 autoBadge.AddToClassList("ns-badge-auto");
                 titleRow.Add(autoBadge);
             }
+
+            string assetPath = GetAutoDetectedAssetPath(id);
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                var fileName = Path.GetFileName(assetPath);
+                var openBtn = new Button(() => NativeSocialAudit.OpenAssetOrFile(assetPath))
+                {
+                    text = "↗ " + fileName,
+                    tooltip = "Open " + assetPath + " in editor or IDE."
+                };
+                openBtn.AddToClassList("ns-btn-secondary");
+                openBtn.style.fontSize = 10;
+                openBtn.style.paddingLeft = 6;
+                openBtn.style.paddingRight = 6;
+                openBtn.style.paddingTop = 1;
+                openBtn.style.paddingBottom = 1;
+                openBtn.style.marginLeft = 6;
+                openBtn.style.borderTopLeftRadius = 4;
+                openBtn.style.borderTopRightRadius = 4;
+                openBtn.style.borderBottomLeftRadius = 4;
+                openBtn.style.borderBottomRightRadius = 4;
+                titleRow.Add(openBtn);
+            }
             textCol.Add(titleRow);
 
             var desc = new Label(description);
@@ -354,6 +377,53 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 // Safe fallback for background or editor edge cases
             }
 
+            return null;
+        }
+
+        private static string GetAutoDetectedAssetPath(string id)
+        {
+            try
+            {
+                var code = NativeSocialAudit.AnalyzeProjectCode();
+                var maps = NativeSocialAudit.FindAllAchievementTierMaps();
+                var primaryMap = maps.Count > 0 ? maps[0] : null;
+
+                switch (id)
+                {
+                    case "setup_map_asset":
+                        return primaryMap != null ? AssetDatabase.GetAssetPath(primaryMap) : null;
+
+                    case "setup_initialize":
+                        if (code.HasInitialize) return code.InitializePath;
+                        var bootGuids = AssetDatabase.FindAssets("NativeSocialBootstrap t:MonoScript");
+                        if (bootGuids.Length > 0) return AssetDatabase.GUIDToAssetPath(bootGuids[0]);
+                        break;
+
+                    case "setup_locid":
+                        if (code.HasLocId) return code.LocIdPath;
+                        break;
+
+                    case "setup_report":
+                        if (code.HasReport) return code.ReportPath;
+                        break;
+
+                    case "setup_sync":
+                        if (code.HasSyncCompleted) return code.SyncCompletedPath;
+                        break;
+
+                    case "steam_ids":
+                    case "android_ids":
+                    case "ios_ids":
+                        return primaryMap != null ? AssetDatabase.GetAssetPath(primaryMap) : null;
+
+                    case "steam_appid":
+                        if (File.Exists("steam_appid.txt")) return "steam_appid.txt";
+                        break;
+                }
+            }
+            catch
+            {
+            }
             return null;
         }
 

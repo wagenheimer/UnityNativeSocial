@@ -227,6 +227,15 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 actions.Add(fixBtn);
             }
 
+            if (!string.IsNullOrEmpty(item.AssetPath))
+            {
+                var fileName = System.IO.Path.GetFileName(item.AssetPath);
+                var openBtn = NativeSocialUIStyle.CreateButton("↗ " + fileName, () => NativeSocialAudit.OpenAssetOrFile(item.AssetPath));
+                openBtn.tooltip = "Click to open " + item.AssetPath + " in editor or IDE.";
+                openBtn.style.marginRight = 4;
+                actions.Add(openBtn);
+            }
+
             actions.Add(CreateIconButton("📋", "Copy this finding.", () => FormatFinding(item)));
             if (!string.IsNullOrEmpty(item.Prompt))
                 actions.Add(CreateIconButton("🤖", "Copy an AI prompt that fixes this finding.", () => item.Prompt));
