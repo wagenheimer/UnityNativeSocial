@@ -592,7 +592,7 @@ namespace Wagenheimer.NativeSocial.UI
             _statusBanner.text = "IOS GAME CENTER";
             _statusBanner.style.color = new Color(0.3f, 0.85f, 0.45f);
             _statusSubtext.text = "Native iOS Game Center platform integration active.";
-#elif WAGENHEIMER_NATIVESOCIAL_STEAM
+#elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             bool steam = NativeSocial.SteamReady;
             _steamStatusLabel.text = steam ? "Ready" : "Waiting SteamAPI.Init";
             _steamStatusLabel.style.color = steam ? new Color(0.3f, 0.85f, 0.45f) : new Color(0.95f, 0.35f, 0.35f);

@@ -11,7 +11,7 @@ using GooglePlayGames.BasicApi;
 using UnityEngine.SocialPlatforms.GameCenter;
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM
+#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
 using Steamworks;
 #endif
 
@@ -71,7 +71,7 @@ namespace Wagenheimer.NativeSocial
         public static bool IsAuthenticated { get; set; }
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM
+#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
         /// <summary>
         /// Whether the Steamworks API has finished initializing (e.g. <c>SteamManager.Initialized</c>).
         /// Set this once Steam is ready; stat/achievement calls are no-ops until then.
@@ -119,7 +119,7 @@ namespace Wagenheimer.NativeSocial
             ReportAndroid(locId, delta, completed);
 #elif UNITY_IOS
             ReportIOS(locId, current, total, completed);
-#elif WAGENHEIMER_NATIVESOCIAL_STEAM
+#elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             ReportSteam(locId, delta, completed);
 #endif
         }
@@ -168,7 +168,7 @@ namespace Wagenheimer.NativeSocial
         }
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM
+#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
         /// <summary>Updates the mapped Steam stat/achievement and flushes to Steam only when something changed.</summary>
         /// <param name="locId">Game-defined achievement key, looked up in <see cref="_steamMap"/> to find the Steam stat/achievement API names.</param>
         /// <param name="delta">How much to add to the Steam stat (<see cref="SteamEntry.Stat"/>), e.g. +1 wildcard collected. 0 or negative means "don't touch the stat".</param>
@@ -236,7 +236,7 @@ namespace Wagenheimer.NativeSocial
             SyncCompletedAndroid(completedLocIds);
 #elif UNITY_IOS
             SyncCompletedIOS(completedLocIds);
-#elif WAGENHEIMER_NATIVESOCIAL_STEAM
+#elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             SyncCompletedSteam(completedLocIds);
 #endif
         }
@@ -274,7 +274,7 @@ namespace Wagenheimer.NativeSocial
         }
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM
+#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
         /// <summary>Re-unlocks every already-completed achievement on Steam, storing once at the end.</summary>
         /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_steamMap"/> to find each Steam achievement API name.</param>
         private static void SyncCompletedSteam(IEnumerable<string> completedLocIds)
