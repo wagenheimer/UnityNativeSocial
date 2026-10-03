@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.2] - 2026-10-03
+- fix: Use the `UnityEngine.Social` facade for Game Center calls on iOS (`GameCenterPlatform` static methods no longer exist in Unity 6), fixing CS0120/CS1501 iOS build errors. `ShowLeaderboardUI` now opens the default Game Center leaderboards screen.
+
 ## [1.21.1] - 2026-10-03
 - fix: Exclude Steamworks code from Android/iOS builds (Steamworks.NET has no mobile assembly), fixing CS0246 "The type or namespace name 'Steamworks' could not be found".
 
