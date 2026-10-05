@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1] - 2026-10-05
+- fix(ui): Added the missing `using System.Collections;` to `NativeSocialDebugOverlay` so `HideToastRoutine`'s non-generic `IEnumerator` return type resolves (fixes `CS0305: Using the generic type 'IEnumerator<T>' requires 1 type arguments`).
+
 ## [1.23.0] - 2026-10-05
 - feat(steam): Steam achievements can now go through `NativeSocial.Report` on every platform. `SteamEntry` gains `Mode` (`SteamUnlockMode.StatThreshold` / `ExplicitAchievement`) and `SetStatAbsolute`; `StatThreshold` + absolute writes reproduce the legacy Storm Tale 2 behavior (stats only, no `SetAchievement`), so a single cross-platform `Report` call covers Android, iOS and Steam.
 - feat(map): `AchievementTierMap` gains map-wide `SteamDefaultUnlockMode` / `SteamSetStatAbsolute` and a per-tier `SteamAchievement` name; `BuildSteamMap()` honors them. Defaults keep pre-existing maps behaving exactly as before.
