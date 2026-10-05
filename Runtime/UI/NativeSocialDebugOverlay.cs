@@ -214,7 +214,7 @@ namespace Wagenheimer.NativeSocial.UI
         private void HandleOnReport(string locId, int delta, int current, int total, bool completed)
         {
             UpdateSimProgress(locId, delta, current, total, completed);
-            AddLog($"[REPORT] {locId} (Δ+{delta}, {current}/{total}, comp={completed})", completed ? LogType.Log : LogType.Log);
+            AddLog($"[REPORT] {locId} (+{delta}, {current}/{total}, comp={completed})", completed ? LogType.Log : LogType.Log);
             if (_isOpen) RefreshAchievementsList();
         }
 
@@ -401,7 +401,7 @@ namespace Wagenheimer.NativeSocial.UI
             _floatingDot.style.marginRight = 6;
             _floatingBtn.Add(_floatingDot);
 
-            var label = new Label("🎮 SOCIAL DBG");
+            var label = new Label("SOCIAL DBG");
             label.style.fontSize = 11.5f;
             label.style.color = Color.white;
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -508,7 +508,7 @@ namespace Wagenheimer.NativeSocial.UI
             titleRow.style.flexDirection = FlexDirection.Row;
             titleRow.style.alignItems = Align.Center;
 
-            var titleLbl = new Label("🎮 Native Social Debug");
+            var titleLbl = new Label("Native Social Debug");
             titleLbl.style.fontSize = 13;
             titleLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
             titleLbl.style.color = ColorAccentCyan;
@@ -538,8 +538,8 @@ namespace Wagenheimer.NativeSocial.UI
             _zoomLabel.style.marginLeft = _zoomLabel.style.marginRight = 3;
             var zoomInBtn = CreateMiniButton("A+", () => SetZoom(_zoom + ZoomStep));
 
-            var maxBtn = CreateMiniButton("⛶", ToggleMaximize);
-            var closeBtn = CreateMiniButton("✕", () => SetOpen(false));
+            var maxBtn = CreateMiniButton("[ ]", ToggleMaximize);
+            var closeBtn = CreateMiniButton("X", () => SetOpen(false));
 
             ctrlRow.Add(zoomOutBtn);
             ctrlRow.Add(_zoomLabel);
@@ -630,7 +630,7 @@ namespace Wagenheimer.NativeSocial.UI
             row1.style.flexDirection = FlexDirection.Row;
             row1.style.marginBottom = 6;
 
-            var authBtn = CreateActionButton("🔑 Authenticate", () =>
+            var authBtn = CreateActionButton("Authenticate", () =>
             {
                 AddLog("Calling NativeSocial.Authenticate()...", LogType.Log);
                 NativeSocial.Authenticate(success =>
@@ -641,7 +641,7 @@ namespace Wagenheimer.NativeSocial.UI
             });
             row1.Add(authBtn);
 
-            var manualAuthBtn = CreateActionButton("👤 Manual Auth (GPGS)", () =>
+            var manualAuthBtn = CreateActionButton("Manual Auth (GPGS)", () =>
             {
                 AddLog("Calling NativeSocial.AuthenticateManually()...", LogType.Log);
                 NativeSocial.AuthenticateManually(success =>
@@ -656,21 +656,21 @@ namespace Wagenheimer.NativeSocial.UI
             var row2 = new VisualElement();
             row2.style.flexDirection = FlexDirection.Row;
 
-            var showAchBtn = CreateActionButton("🏆 Show Achievements UI", () =>
+            var showAchBtn = CreateActionButton("Show Achievements UI", () =>
             {
                 var shown = NativeSocial.ShowAchievementsUI();
                 AddLog($"ShowAchievementsUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
             });
             row2.Add(showAchBtn);
 
-            var showLbBtn = CreateActionButton("📊 Show Leaderboard UI", () =>
+            var showLbBtn = CreateActionButton("Show Leaderboard UI", () =>
             {
                 var shown = NativeSocial.ShowLeaderboardUI();
                 AddLog($"ShowLeaderboardUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
             });
             row2.Add(showLbBtn);
 
-            var syncBtn = CreateActionButton("🔄 Re-Sync Completed", () =>
+            var syncBtn = CreateActionButton("Re-Sync Completed", () =>
             {
                 var completedKeys = _simProgressMap.Where(p => p.Value.Completed).Select(p => p.Key).ToList();
                 NativeSocial.SyncCompleted(completedKeys);
@@ -709,7 +709,7 @@ namespace Wagenheimer.NativeSocial.UI
             card.Add(topRow);
 
             // Search bar
-            var searchField = new TextField { placeholderText = "🔍 Search by title, LocID or platform key..." };
+            var searchField = new TextField { placeholderText = "Search by title, LocID or platform key..." };
             searchField.style.marginBottom = 6;
             searchField.RegisterValueChangedCallback(evt =>
             {
@@ -907,13 +907,13 @@ namespace Wagenheimer.NativeSocial.UI
             });
             actRow.Add(add5Btn);
 
-            var unlockBtn = CreateCardButton("✓ Unlock", () =>
+            var unlockBtn = CreateCardButton("Unlock", () =>
             {
                 NativeSocial.Report(item.LocId, 0, sim.Total, sim.Total, true);
             }, ColorAccentGreen);
             actRow.Add(unlockBtn);
 
-            var resetBtn = CreateCardButton("↺ Reset", () =>
+            var resetBtn = CreateCardButton("Reset", () =>
             {
                 sim.Current = 0;
                 sim.Completed = false;
@@ -1016,16 +1016,16 @@ namespace Wagenheimer.NativeSocial.UI
                 string trans = TryGetI2Translation(entry.NameTerm);
                 if (!string.IsNullOrEmpty(trans))
                 {
-                    return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {trans}";
+                    return $"Trophy {entry.TrophyNumber} - Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {trans}";
                 }
             }
 
             if (!string.IsNullOrEmpty(entry.DisplayName))
             {
-                return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {entry.DisplayName}";
+                return $"Trophy {entry.TrophyNumber} - Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {entry.DisplayName}";
             }
 
-            return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)}";
+            return $"Trophy {entry.TrophyNumber} - Tier {AchievementTierMap.RomanNumeral(entry.Tier)}";
         }
 
         private static MethodInfo _i2GetTranslationMethod;
@@ -1095,7 +1095,7 @@ namespace Wagenheimer.NativeSocial.UI
             _completedToggle = new Toggle("Complete Outright") { value = false };
             card.Add(_completedToggle);
 
-            var sendReportBtn = CreateActionButton("🚀 Dispatch Report()", () =>
+            var sendReportBtn = CreateActionButton("Dispatch Report()", () =>
             {
                 var loc = _locIdInput.value;
                 var delta = _deltaInput.value;
@@ -1125,7 +1125,7 @@ namespace Wagenheimer.NativeSocial.UI
             card.Add(_scoreInput);
 
             var lbBtnRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4 } };
-            var submitBtn = CreateActionButton("📈 Submit Score", () =>
+            var submitBtn = CreateActionButton("Submit Score", () =>
             {
                 var loc = _lbIdInput.value;
                 var sc = _scoreInput.value;
