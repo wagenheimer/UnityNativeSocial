@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-10-05
+- feat(steam): Steam achievements can now go through `NativeSocial.Report` on every platform. `SteamEntry` gains `Mode` (`SteamUnlockMode.StatThreshold` / `ExplicitAchievement`) and `SetStatAbsolute`; `StatThreshold` + absolute writes reproduce the legacy Storm Tale 2 behavior (stats only, no `SetAchievement`), so a single cross-platform `Report` call covers Android, iOS and Steam.
+- feat(map): `AchievementTierMap` gains map-wide `SteamDefaultUnlockMode` / `SteamSetStatAbsolute` and a per-tier `SteamAchievement` name; `BuildSteamMap()` honors them. Defaults keep pre-existing maps behaving exactly as before.
+- feat(ui): Achievement editor gains a "Steam unlock model" card (dropdowns + live help); Setup Audit reports the active model; Checklist, Docs and README document both models.
+- tests: Cover the new `BuildSteamMap` modes and the backward-compatible `SteamEntry` constructor.
+
 ## [1.22.3] - 2026-10-05
 - feat(ios): Enable GameKit default achievement completion banner (`ShowDefaultAchievementCompletionBanner(true)`) automatically on iOS during initialization and authentication.
 - feat(ui): Added in-game achievement unlock toast notification to `NativeSocialDebugOverlay` for visual feedback in Editor and builds.
