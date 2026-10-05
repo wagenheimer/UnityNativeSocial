@@ -32,7 +32,10 @@ var iosMap = new Dictionary<string, string> {
     { ""ach_first_win"", ""grp.ach_first_win"" }
 };
 var steamMap = new Dictionary<string, SteamEntry> {
-    { ""ach_first_win"", new SteamEntry(""STAT_WINS"", ""ACH_FIRST_WIN"") }
+    { ""ach_first_win"", new SteamEntry(""STAT_WINS"", ""ACH_FIRST_WIN"") },
+    // Legacy stat-threshold: the game only writes the stat; Steamworks unlocks the
+    // achievement from the stat. SetStatAbsolute mirrors the old Storm Tale 2 code.
+    { ""ach_status"", new SteamEntry(""Trophy1_1_Status"", """", SteamUnlockMode.StatThreshold, setStatAbsolute: true) }
 };
 
 NativeSocial.Initialize(androidMap, iosMap, steamMap);";
@@ -40,7 +43,8 @@ NativeSocial.Initialize(androidMap, iosMap, steamMap);";
 
             const string reportSnippet =
 @"// Report progress safely on any platform:
-// Android & Steam use 'delta'; iOS uses 'current' / 'total'.
+// Android uses 'delta'; iOS uses 'current' / 'total'.
+// Steam uses 'delta', or 'current' when the entry's SetStatAbsolute is true.
 NativeSocial.Report(
     locId: ""ach_first_win"",
     delta: 1,
@@ -80,6 +84,19 @@ void Awake()
 // Report a tier by trophy number, no hand-formatted strings:
 NativeSocial.Report(AchievementTierMap.LocId(trophyNumber: 4, tier: 2), delta: 1, current: 2, total: 3, completed: false);";
             Root.Add(NativeSocialUIStyle.CreateCodeCard("5. Using AchievementTierMap (recommended)", tierMapSnippet));
+
+            const string steamModelSnippet =
+@"// Steam unlock models - set on the AchievementTierMap's 'Steam unlock model' card:
+// - Stat threshold (legacy Storm Tale 2): only the stat is written and each achievement
+//   is configured on Steamworks to unlock from that stat's threshold. No SetAchievement.
+//     new SteamEntry(""Trophy1_1_Status"", """", SteamUnlockMode.StatThreshold, setStatAbsolute: true)
+// - Explicit achievement: the game calls SetAchievement on completion.
+//     new SteamEntry(""Trophy1_1_Stat"", ""ACH_TROPHY_1_1"")
+
+// Steam bootstrapping: SteamManager only boots the SteamAPI. Tell NativeSocial when it
+// is ready, or every Steam Report is a no-op.
+NativeSocial.SteamReady = SteamManager.Initialized;";
+            Root.Add(NativeSocialUIStyle.CreateCodeCard("6. Steam Unlock Models", steamModelSnippet));
 
             BuildAboutCard();
         }

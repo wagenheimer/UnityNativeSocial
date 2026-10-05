@@ -63,6 +63,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             Root.Add(BuildToolbar());
+            Root.Add(BuildSteamModelCard());
             _hubContainer = new VisualElement();
             Root.Add(_hubContainer);
             RebuildHubCard();
@@ -72,7 +73,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             _list = new VisualElement();
             Root.Add(_list);
 
-            Root.TrackSerializedObjectValue(_so, _ => { RefreshSummary(); RefreshPointsStatus(); foreach (var update in _rowUpdaters) update(); });
+            Root.TrackSerializedObjectValue(_so, _ => { RefreshSummary(); RefreshPointsStatus(); RefreshSteamHelp(); foreach (var update in _rowUpdaters) update(); });
             Root.schedule.Execute(() => { if (_dirtyLabel != null) _dirtyLabel.style.display = EditorUtility.IsDirty(_map) ? DisplayStyle.Flex : DisplayStyle.None; }).Every(400);
 
             Refresh();
@@ -179,6 +180,40 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 b.RemoveFromClassList("ns-btn-secondary");
                 b.AddToClassList(f == _filter ? "ns-btn-primary" : "ns-btn-secondary");
             }
+        }
+
+        // ── Steam unlock model ───────────────────────────────────────────────────
+
+        private Label _steamModelHelp;
+
+        private VisualElement BuildSteamModelCard()
+        {
+            var card = NativeSocialUIStyle.CreateCard("🎮 Steam unlock model",
+                "Steam can unlock a tier two ways. \"Stat threshold\" keeps the legacy Storm Tale 2 behavior: the game only writes the Steam stat (e.g. Trophy1_1_Status) and you configure each achievement on the Steamworks partner site to unlock when that stat reaches the tier value - the game never calls SetAchievement. \"Explicit achievement\" unlocks it from the game when the tier is completed.");
+
+            card.Add(new PropertyField(_so.FindProperty("SteamDefaultUnlockMode"), "Unlock model"));
+            card.Add(new PropertyField(_so.FindProperty("SteamSetStatAbsolute"), "Write stat as absolute counter (legacy)"));
+
+            _steamModelHelp = new Label { style = { whiteSpace = WhiteSpace.Normal, marginTop = 6, fontSize = 10, color = NativeSocialUIStyle.ColorTextMuted } };
+            card.Add(_steamModelHelp);
+            RefreshSteamHelp();
+
+            return card;
+        }
+
+        private void RefreshSteamHelp()
+        {
+            if (_steamModelHelp == null) return;
+
+            var modeProp = _so.FindProperty("SteamDefaultUnlockMode");
+            var absoluteProp = _so.FindProperty("SteamSetStatAbsolute");
+            var mode = (SteamUnlockMode)(modeProp != null ? modeProp.enumValueIndex : (int)SteamUnlockMode.ExplicitAchievement);
+            var absolute = absoluteProp != null && absoluteProp.boolValue;
+
+            _steamModelHelp.text = mode == SteamUnlockMode.StatThreshold
+                ? "Stat threshold: the game writes the stat only" + (absolute ? " as the absolute counter value" : " by adding the reported delta") +
+                  ". No SetAchievement is called - on Steamworks, each of the 54 achievements must be configured to unlock from its stat's threshold. This is exactly what the legacy AchievementsSteam code did."
+                : "Explicit achievement: on completion the game calls SetAchievement with the tier's \"Steam achievement\" name (falling back to the stat name when empty). Leave \"Steam achievement\" empty only if your Steamworks achievement shares the stat's API name.";
         }
 
         // ── AppDeployHub (online) ────────────────────────────────────────────────
@@ -806,7 +841,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         // ── Summary ──────────────────────────────────────────────────────────────
 
-        private const string SteamHelp = "Steam: the achievement's API name (\"SteamStat\"). Set it so Steam can unlock this tier.";
+        private const string SteamHelp = "Steam: the stat API name for this tier (e.g. Trophy1_1_Status). In \"Stat threshold\" mode Steamworks unlocks the achievement from this stat; in \"Explicit achievement\" mode the game also calls SetAchievement (using \"Steam achievement\", falling back to the stat name when empty).";
         private const string GoogleHelp = "Google Play: the achievement ID Google assigns (looks like CgkI...). Amber just means this tier has none yet - Google creates the ID when the achievement is published in Play Console (push it from AppDeployHub), then it can be filled in here.";
         private const string AppleHelp = "Apple Game Center: the achievement ID of this tier in App Store Connect. Amber just means none is linked yet - it is created when you push from AppDeployHub.";
 
@@ -910,7 +945,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             if (string.IsNullOrWhiteSpace(_search)) return true;
             var haystack = string.Join(" ", e.TrophyNumber, AchievementTextResolver.Name(_map, e, _language).Text,
-                e.SteamStat, e.GooglePlayId, e.AppleId, e.NameTerm, e.EarnedDescriptionTerm, e.NotEarnedDescriptionTerm);
+                e.SteamStat, e.SteamAchievement, e.GooglePlayId, e.AppleId, e.NameTerm, e.EarnedDescriptionTerm, e.NotEarnedDescriptionTerm);
             return haystack.IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -1083,7 +1118,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             Section("IDENTITY", "TrophyNumber", "Tier", "Points", "IsHidden");
-            Section("PLATFORM IDS", "SteamStat", "GooglePlayId", "AppleId");
+            Section("PLATFORM IDS", "SteamStat", "SteamAchievement", "GooglePlayId", "AppleId");
             Section("I2 LOCALIZATION TERMS (preferred)", "NameTerm", "EarnedDescriptionTerm", "NotEarnedDescriptionTerm");
             Section("LITERAL FALLBACKS (used only when a term is empty or has no translation)", "DisplayName", "EarnedDescription", "NotEarnedDescription");
 

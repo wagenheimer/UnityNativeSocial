@@ -799,6 +799,28 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             });
             row2.Add(checkIosBtn);
 
+            // New button: Test iOS Report
+            var testIosBtn = CreateActionButton("Test iOS Report", () =>
+            {
+                AddLog("Starting iOS Report test...", LogType.Log);
+                var map = Resources.Load<AchievementTierMap>("AchievementTierMap");
+                if (map == null)
+                {
+                    AddLog("AchievementTierMap not found in Resources. Cannot perform test.", LogType.Error);
+                    return;
+                }
+                int tested = 0;
+                foreach (var entry in map.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.AppleId)) continue;
+                    tested++;
+                    // Report 0% progress to trigger logging (total must be >0)
+                    NativeSocial.Report(AchievementTierMap.LocId(entry.TrophyNumber, entry.Tier), 0, 0, 100, false);
+                }
+                AddLog($"iOS Report test completed for {tested} entries. Check overlay logs for results.", LogType.Log);
+            });
+            row2.Add(testIosBtn);
+
             card.Add(row2);
             return card;
         }
@@ -985,6 +1007,19 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             {
                 var tag = CreateIdTag("iOS", item.AppleId);
                 metaRow.Add(tag);
+                // Detect UUID format (contains hyphens) and show warning with swap button
+                if (item.AppleId.Contains("-"))
+                {
+                    var warning = new Label("⚠ UUID");
+                    warning.style.fontSize = 9f;
+                    warning.style.color = ColorAccentRed;
+                    metaRow.Add(warning);
+                    var swapBtn = CreateCardButton("Use Identifier", () =>
+                    {
+                        AddLog($"Swap requested for iOS ID of {item.LocId}.", LogType.Log);
+                    });
+                    metaRow.Add(swapBtn);
+                }
             }
             if (!string.IsNullOrEmpty(item.SteamStat))
             {

@@ -52,11 +52,11 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             (CategoryCore, "setup_locid", "All Report/SyncCompleted calls use AchievementTierMap.LocId(...)",
                 "Always format keys using AchievementTierMap.LocId(trophyNumber, tier) so call sites and map dictionaries match perfectly without typos."),
             (CategoryCore, "setup_report", "Progress reported through NativeSocial.Report(...)",
-                "Report(locId, delta, current, total, completed): Android/Steam use delta, iOS uses current/total for percentage. Pass completed: true when reaching the goal."),
+                "Report(locId, delta, current, total, completed): Android uses delta; iOS uses current/total for percentage; Steam uses delta, or current when the map's 'Write stat as absolute counter' is on. Pass completed: true when reaching the goal."),
             (CategoryCore, "setup_sync", "SyncCompleted(...) called right after sign-in",
                 "Re-pushes achievements earned while offline or on another device. Call it immediately after authentication succeeds, passing locally unlocked LocIds."),
             (CategoryCore, "setup_owner", "One owner per platform (no double-reporting)",
-                "If your project already had a custom Steam integration (e.g. SteamManager/AchievementsSteam), keep using it for Steam and pass null for steamMap to avoid double unlocks."),
+                "Report Steam through NativeSocial too (BuildSteamMap in Initialize) instead of a second Steamworks integration. Keep SteamManager only to boot the SteamAPI and set NativeSocial.SteamReady; let NativeSocial own the stats/achievements."),
 
             // Steam (Steamworks.NET) ────────────────────────────────────────────────
             (CategorySteam, "steam_installed", "[In-Project] Steamworks.NET installed",
@@ -65,12 +65,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 "Active in the current build target or managed by your automated build pipeline (e.g. PublisherProfile). Without it, NativeSocial's Steam calls compile out."),
             (CategorySteam, "steam_ids", "[In-Project] SteamStat names filled in AchievementTierMap",
                 "Every trophy tier shipping on Steam has its SteamStat name configured (e.g. Trophy1_1_Status)."),
+            (CategorySteam, "steam_unlock_model", "[In-Project] Steam unlock model chosen in AchievementTierMap",
+                "Stat threshold (legacy): the game only writes the stats and each achievement is configured on Steamworks to unlock from its stat's threshold - no SetAchievement. Explicit achievement: the game calls SetAchievement with the tier's Steam achievement name. Pick one in the map's 'Steam unlock model' card; for the legacy Storm Tale 2 behavior use Stat threshold + 'Write stat as absolute counter'."),
             (CategorySteam, "steam_partner", "[Store Console] Stats & achievements created in Steamworks",
-                "Create all matching stats and achievements on the Steamworks Partner portal (Admin > Stats & Achievements). API names must match SteamStat exactly."),
+                "Create all matching stats and achievements on the Steamworks Partner portal (Admin > Stats & Achievements). API names must match SteamStat exactly. In stat-threshold mode, configure each achievement to unlock when its stat reaches the tier value."),
             (CategorySteam, "steam_appid", "[Testing] steam_appid.txt present for local testing",
                 "Put steam_appid.txt (containing your Steam App ID) in the project root or beside the built .exe when testing outside of the Steam launcher."),
             (CategorySteam, "steam_test", "[Testing] Tested with the Steam client running",
-                "Verify achievements unlock with Steam client notifications popping up while the game is running."),
+                "Verify achievements unlock with Steam client notifications popping up while the game is running (stat-threshold achievements unlock from the stat, not from a SetAchievement call)."),
 
             // Android (Google Play Games) ───────────────────────────────────────────
             (CategoryAndroid, "android_install", "[In-Project] GPGS plugin installed via Git UPM",

@@ -136,6 +136,60 @@ namespace Wagenheimer.NativeSocial.Tests
         }
 
         [Test]
+        public void BuildSteamMap_StatThreshold_LeavesAchievementEmpty_AndHonorsAbsolute()
+        {
+            _map.SteamDefaultUnlockMode = SteamUnlockMode.StatThreshold;
+            _map.SteamSetStatAbsolute = true;
+            _map.Entries.Add(new AchievementTierEntry { TrophyNumber = 1, Tier = 1, SteamStat = "Trophy1_1_Status" });
+
+            var entry = _map.BuildSteamMap()["Trophy1_1"];
+
+            Assert.AreEqual("Trophy1_1_Status", entry.Stat);
+            Assert.AreEqual(string.Empty, entry.Achievement);
+            Assert.AreEqual(SteamUnlockMode.StatThreshold, entry.Mode);
+            Assert.IsTrue(entry.SetStatAbsolute);
+        }
+
+        [Test]
+        public void BuildSteamMap_ExplicitAchievement_UsesPerEntryName_WhenSet()
+        {
+            _map.SteamDefaultUnlockMode = SteamUnlockMode.ExplicitAchievement;
+            _map.Entries.Add(new AchievementTierEntry
+            {
+                TrophyNumber = 2,
+                Tier = 3,
+                SteamStat = "Trophy2_3_Status",
+                SteamAchievement = "ACH_TROPHY_2_3"
+            });
+
+            var entry = _map.BuildSteamMap()["Trophy2_3"];
+
+            Assert.AreEqual("Trophy2_3_Status", entry.Stat);
+            Assert.AreEqual("ACH_TROPHY_2_3", entry.Achievement);
+            Assert.AreEqual(SteamUnlockMode.ExplicitAchievement, entry.Mode);
+            Assert.IsFalse(entry.SetStatAbsolute);
+        }
+
+        [Test]
+        public void SteamEntry_TwoArgConstructor_PreservesLegacyBehavior()
+        {
+            var withAchievement = new SteamEntry("STAT_X", "ACH_X");
+            Assert.AreEqual(SteamUnlockMode.ExplicitAchievement, withAchievement.Mode);
+            Assert.IsFalse(withAchievement.SetStatAbsolute);
+
+            var statOnly = new SteamEntry("STAT_X", "");
+            Assert.AreEqual(SteamUnlockMode.StatThreshold, statOnly.Mode);
+            Assert.IsFalse(statOnly.SetStatAbsolute);
+        }
+
+        [Test]
+        public void SteamDefaultFields_DefaultToLegacyBehavior_ForOldAssets()
+        {
+            Assert.AreEqual(SteamUnlockMode.ExplicitAchievement, _map.SteamDefaultUnlockMode);
+            Assert.IsFalse(_map.SteamSetStatAbsolute);
+        }
+
+        [Test]
         public void CountMissingGooglePlay_CountsOnlyEmptyOrNullIds()
         {
             _map.Entries.Add(new AchievementTierEntry { GooglePlayId = "id1" });

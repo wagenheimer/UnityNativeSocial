@@ -23,6 +23,9 @@ namespace Wagenheimer.NativeSocial
         [Tooltip("Steamworks achievement stat name for this tier (e.g. \"Trophy1_1_Status\"), or empty if this game doesn't ship on Steam / doesn't track this tier via a stat.")]
         public string SteamStat;
 
+        [Tooltip("Steamworks achievement API name for this tier, when it is unlocked explicitly by the game (Steam Unlock Mode = Explicit Achievement on the map). Leave empty to fall back to the stat name; ignored entirely in Stat Threshold mode.")]
+        public string SteamAchievement;
+
         [Tooltip("Google Play Games achievement ID for this tier (from the Google Play Console), or empty until that console listing exists.")]
         public string GooglePlayId;
 
@@ -78,6 +81,12 @@ namespace Wagenheimer.NativeSocial
 
         [Tooltip("When a name comes from an I2 term shared by all tiers of a trophy, append the tier numeral (I, II, III) so each tier is a distinct achievement on the stores. Ignored for a trophy with a single tier.")]
         public bool AppendTierNumeral = true;
+
+        [Tooltip("Default Steam unlock model for every entry. Stat Threshold = game only writes the stat and Steamworks auto-unlocks the achievement at its threshold (legacy Storm Tale 2 model); Explicit Achievement = game calls SetAchievement with SteamAchievement (or the stat name). Defaults to Explicit Achievement to keep pre-existing maps behaving exactly as before.")]
+        public SteamUnlockMode SteamDefaultUnlockMode = SteamUnlockMode.ExplicitAchievement;
+
+        [Tooltip("Default for every entry. True = Report writes the absolute counter value to the Steam stat (legacy model); false = Report adds the reported delta to the stat.")]
+        public bool SteamSetStatAbsolute = false;
 
         /// <summary>Default I2 term for a trophy's name (shared by its tiers), matching the convention <c>trophy{N}</c>.</summary>
         public static string DefaultNameTerm(int trophyNumber) => $"trophy{trophyNumber}";
@@ -139,10 +148,24 @@ namespace Wagenheimer.NativeSocial
             Entries.Where(e => !string.IsNullOrEmpty(e.AppleId))
                 .ToDictionary(e => LocId(e.TrophyNumber, e.Tier), e => e.AppleId);
 
-        /// <summary>LocId -> Steam stat/achievement pair, for entries with a non-empty <see cref="AchievementTierEntry.SteamStat"/>. The Steamworks achievement API name is assumed to equal the stat name; pass a custom map to <c>NativeSocial.Initialize</c> instead if a game's Steam achievement names differ from its stat names.</summary>
+        /// <summary>
+        /// LocId -> <see cref="SteamEntry"/> for entries with a non-empty <see cref="AchievementTierEntry.SteamStat"/>,
+        /// honoring <see cref="SteamDefaultUnlockMode"/>/<see cref="SteamSetStatAbsolute"/> and the optional
+        /// per-entry <see cref="AchievementTierEntry.SteamAchievement"/> name. In <see cref="SteamUnlockMode.StatThreshold"/>
+        /// the achievement name is left empty so <c>NativeSocial.Report</c> never calls SetAchievement (Steamworks
+        /// unlocks it from the stat threshold). Pass a custom map to <c>NativeSocial.Initialize</c> for anything more exotic.
+        /// </summary>
         public Dictionary<string, SteamEntry> BuildSteamMap() =>
             Entries.Where(e => !string.IsNullOrEmpty(e.SteamStat))
-                .ToDictionary(e => LocId(e.TrophyNumber, e.Tier), e => new SteamEntry(e.SteamStat, e.SteamStat));
+                .ToDictionary(
+                    e => LocId(e.TrophyNumber, e.Tier),
+                    e => new SteamEntry(
+                        stat: e.SteamStat,
+                        achievement: SteamDefaultUnlockMode == SteamUnlockMode.StatThreshold
+                            ? string.Empty
+                            : string.IsNullOrEmpty(e.SteamAchievement) ? e.SteamStat : e.SteamAchievement,
+                        mode: SteamDefaultUnlockMode,
+                        setStatAbsolute: SteamSetStatAbsolute));
 
         /// <summary>Number of entries missing a Google Play ID — for a Setup Audit "N of M achievement IDs still need to be filled in" check.</summary>
         public int CountMissingGooglePlay() => Entries.Count(e => string.IsNullOrEmpty(e.GooglePlayId));

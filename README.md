@@ -8,7 +8,7 @@ Platform-native social API wrapper for Unity. Replaces Unity's deprecated `Socia
 |----------|---------|----------|
 | Android  | Google Play Games | Authenticate (auto + manual sign-in), Increment/Unlock achievements, Show achievements UI, Leaderboards (submit/show), Server auth code (for Unity Authentication / backends) |
 | iOS      | Game Center       | Authenticate, Report progress (0-100%), Show achievements UI, Leaderboards (submit/show) |
-| Windows/Mac/Linux | Steamworks | Set stats, Unlock achievements, StoreStats, Flush |
+| Windows/Mac/Linux | Steamworks | Set stats (delta or absolute), Unlock achievements (explicit or stat-threshold), StoreStats, Flush |
 
 ### Android requirements
 
@@ -130,6 +130,30 @@ Steam integration is enabled automatically — the package's asmdef defines
 `com.rlabrecque.steamworks.net` (Steamworks.NET) is present in your project.
 No manual Scripting Define Symbols setup is required.
 
+`SteamManager` (or wherever you boot `SteamAPI.Init()`) only starts the API; tell NativeSocial when it is
+ready, or every Steam call is a silent no-op:
+
+```csharp
+NativeSocial.SteamReady = SteamManager.Initialized;
+```
+
+### Steam unlock models
+
+Each `SteamEntry` chooses how its achievement is unlocked:
+
+| Mode | The game does | You configure on Steamworks |
+|---|---|---|
+| `SteamUnlockMode.StatThreshold` | writes the stat only, never calls `SetAchievement` | each achievement unlocks when its stat reaches the threshold — the legacy Storm Tale 2 model |
+| `SteamUnlockMode.ExplicitAchievement` | calls `SetAchievement(Achievement)` on completion | the achievement exists with that exact API name |
+
+`SteamEntry.SetStatAbsolute` selects how the stat is written: `true` writes the absolute `current`
+value (legacy), `false` adds the reported `delta` to the stat's cached value.
+
+`AchievementTierMap` exposes both as map-wide defaults (`SteamDefaultUnlockMode`,
+`SteamSetStatAbsolute`) plus an optional per-tier `SteamAchievement` name (used only in explicit mode,
+`BuildSteamMap` falls back to `SteamStat` when empty). For the legacy behavior pick **Stat threshold +
+Write stat as absolute counter** in the map's "Steam unlock model" card.
+
 ## Editor Dashboard
 
 `Tools > Wagenheimer > Native Social > Dashboard...` (or `Verify Setup...` to jump straight to the audit)
@@ -163,7 +187,8 @@ that holds one row per achievement tier:
 | Field | Used by | Purpose |
 |---|---|---|
 | `TrophyNumber`, `Tier` | `LocId(trophyNumber, tier)` | Together they form the canonical `"Trophy{N}_{tier}"` key shared by every map and by `NativeSocial.Report`/`SyncCompleted` call sites — **always build the key with this static method, never format the string by hand**, or the key used to report progress will silently stop matching the key used to build the maps. |
-| `SteamStat` | `BuildSteamMap()` | Steamworks stat name (e.g. `"Trophy4_2_Status"`), assumed to equal the achievement API name too — pass a custom map to `Initialize` instead if your Steam achievement names differ from your stat names. |
+| `SteamStat` | `BuildSteamMap()` | Steamworks stat name (e.g. `"Trophy4_2_Status"`). In `SteamThreshold` mode Steamworks unlocks the achievement from this stat; in explicit mode the achievement name defaults to it (override per tier with `SteamAchievement`). Map-wide behavior: `SteamDefaultUnlockMode` + `SteamSetStatAbsolute`. |
+| `SteamAchievement` | `BuildSteamMap()` (explicit mode only) | Optional Steamworks achievement API name when it differs from `SteamStat`. Ignored in `StatThreshold` mode. |
 | `GooglePlayId` | `BuildAndroidMap()` | Google Play Games achievement ID, from the Play Console (or auto-filled by AppDeployHub — see below). Leave empty until it exists: `NativeSocial.Report` no-ops for an unmapped LocId, so a partially-filled map is always safe to ship. |
 | `AppleId` | `BuildIosMap()` | Apple Game Center achievement ID, from App Store Connect (or auto-filled by AppDeployHub). Same empty-is-safe rule applies. |
 | `NameTerm`, `EarnedDescriptionTerm`, `NotEarnedDescriptionTerm` | **Export + editor preview** — not read by `NativeSocial` itself | [I2 Localization](https://inter-illusion.com/tools/i2-localization) term keys for the tier's name / "earned" text / "not earned yet" hint. **Preferred source of all player-facing text.** Conventions: name = `trophy{N}` (shared by the trophy's tiers; the tier numeral I/II/III is appended automatically, see `AppendTierNumeral`), earned/not-earned = `Achievements/Trophy{N}_{tier}/Earned` and `.../NotEarned`. |

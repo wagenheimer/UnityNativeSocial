@@ -539,7 +539,32 @@ public class NativeSocialBootstrap : MonoBehaviour
                     steamFound ? AuditSeverity.Warning : AuditSeverity.Info,
                     whatIsThis: "Steam achievements use the stat/achievement API names configured in Steamworks Partner site.",
                     assetPath: mapPath);
+
+                var modelResult = Result(CategorySteam, "Steam Unlock Model", AuditSeverity.Info,
+                    DescribeSteamModel(map),
+                    whatIsThis: "How NativeSocial drives Steam achievements. 'Stat threshold' only writes the stat and relies on the Steamworks partner site to unlock each achievement from its stat threshold (the legacy Storm Tale 2 behavior). 'Explicit achievement' calls SetAchievement when a tier is completed.");
+                modelResult.AssetPath = mapPath;
+                results.Add(modelResult);
             }
+        }
+
+        /// <summary>Plain-language summary of the map's Steam unlock model, shown in the Setup Audit.</summary>
+        private static string DescribeSteamModel(AchievementTierMap map)
+        {
+            if (map.SteamDefaultUnlockMode == SteamUnlockMode.StatThreshold)
+            {
+                int ignoredNames = map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamAchievement));
+                var ignored = ignoredNames > 0
+                    ? $" ({ignoredNames} per-tier 'Steam achievement' name(s) are ignored in this mode.)"
+                    : string.Empty;
+                return "Stat threshold: the game writes the Steam stat" +
+                       (map.SteamSetStatAbsolute ? " as an absolute counter" : " by accumulating deltas") +
+                       " and never calls SetAchievement - configure each achievement on the Steamworks partner site to unlock when its stat reaches the tier value." + ignored;
+            }
+
+            int explicitNames = map.Entries.Count(e => !string.IsNullOrEmpty(e.SteamAchievement));
+            return "Explicit achievement: on completion the game calls SetAchievement with each tier's 'Steam achievement' name " +
+                   $"({explicitNames} set; the stat name is used for the rest).";
         }
 
         #endregion

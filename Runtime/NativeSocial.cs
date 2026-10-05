@@ -130,17 +130,18 @@ namespace Wagenheimer.NativeSocial
         /// Report achievement progress to the active platform. Dispatches to whichever of
         /// <see cref="ReportAndroid"/>/<see cref="ReportIOS"/>/<see cref="ReportSteam"/> matches
         /// the current build target — pass all five parameters every time and let each platform
-        /// use only the ones it needs (Android/Steam use <paramref name="delta"/>, iOS uses
-        /// <paramref name="current"/>/<paramref name="total"/>).
+        /// use only the ones it needs (Android uses <paramref name="delta"/>; iOS uses
+        /// <paramref name="current"/>/<paramref name="total"/>; Steam uses <paramref name="delta"/>
+        /// or <paramref name="current"/> depending on <see cref="SteamEntry.SetStatAbsolute"/>).
         /// </summary>
         /// <param name="locId">Game-defined achievement key (the key used in the maps passed to <see cref="Initialize"/>). Identifies which achievement this call is for.</param>
         /// <param name="delta">
         /// How much the underlying counter/stat should increase by since the last call
         /// (e.g. "+1 wildcard collected just now"). Used by Android (GPGS IncrementAchievement)
-        /// and Steam (adds to the mapped stat). Pass 0 when you only want to report/check
-        /// <paramref name="completed"/> without bumping a counter.
+        /// and by Steam when <see cref="SteamEntry.SetStatAbsolute"/> is false. Pass 0 when you only
+        /// want to report/check <paramref name="completed"/> without bumping a counter.
         /// </param>
-        /// <param name="current">Current absolute progress value (e.g. "5 of 20 wildcards collected"). Only used by iOS, which reports achievements as a 0-100% completion percentage rather than an incrementing counter.</param>
+        /// <param name="current">Current absolute progress value (e.g. "5 of 20 wildcards collected"). Used by iOS (0-100% completion) and by Steam when <see cref="SteamEntry.SetStatAbsolute"/> is true.</param>
         /// <param name="total">Progress value that represents 100% completion (e.g. 20 wildcards total). Only used by iOS, alongside <paramref name="current"/>, to compute that percentage.</param>
         /// <param name="completed">Whether the achievement is fully completed right now. When true, all platforms unlock/complete it outright regardless of the counter parameters.</param>
         public static void Report(string locId, int delta, int current, int total, bool completed)
@@ -228,9 +229,10 @@ namespace Wagenheimer.NativeSocial
 #if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
         /// <summary>Updates the mapped Steam stat/achievement and flushes to Steam only when something changed.</summary>
         /// <param name="locId">Game-defined achievement key, looked up in <see cref="_steamMap"/> to find the Steam stat/achievement API names.</param>
-        /// <param name="delta">How much to add to the Steam stat (<see cref="SteamEntry.Stat"/>), e.g. +1 wildcard collected. 0 or negative means "don't touch the stat".</param>
-        /// <param name="completed">If true, unlocks the Steam achievement (<see cref="SteamEntry.Achievement"/>) if it isn't already unlocked.</param>
-        private static void ReportSteam(string locId, int delta, bool completed)
+        /// <param name="delta">How much to add to the Steam stat (<see cref="SteamEntry.Stat"/>) when <see cref="SteamEntry.SetStatAbsolute"/> is false, e.g. +1 wildcard collected. 0 or negative means "don't touch the stat". Ignored in absolute mode.</param>
+        /// <param name="current">Absolute progress value written to the stat when <see cref="SteamEntry.SetStatAbsolute"/> is true (the legacy "set the counter" model). Mirrors the value iOS already uses.</param>
+        /// <param name="completed">If true, unlocks the Steam achievement (<see cref="SteamEntry.Achievement"/>) when <see cref="SteamEntry.Mode"/> is <see cref="SteamUnlockMode.ExplicitAchievement"/>. Ignored in <see cref="SteamUnlockMode.StatThreshold"/> (Steamworks unlocks it from the stat).</param>
+        private static void ReportSteam(string locId, int delta, int current, bool completed)
         {
             if (!SteamReady || locId == null) return;
             if (!_steamMap.TryGetValue(locId, out var entry)) return;
@@ -238,15 +240,29 @@ namespace Wagenheimer.NativeSocial
             // Only call StoreStats() (see below) if we actually changed something this call.
             bool dirty = false;
 
-            // GetStat reads the current cached value so we can add delta to it — Steam has no
-            // "increment stat by N" call, only "set stat to this absolute value".
-            if (delta > 0 && !string.IsNullOrEmpty(entry.Stat) && SteamUserStats.GetStat(entry.Stat, out int current))
+            if (!string.IsNullOrEmpty(entry.Stat))
             {
-                SteamUserStats.SetStat(entry.Stat, current + delta);
-                dirty = true;
+                if (entry.SetStatAbsolute)
+                {
+                    // Absolute model (Storm Tale 2 legacy): write the exact counter value the game
+                    // holds. Idempotent — skip SetStat when Steam's cached value already matches.
+                    bool known = SteamUserStats.GetStat(entry.Stat, out int statCurrent);
+                    if (!known || statCurrent != current)
+                    {
+                        SteamUserStats.SetStat(entry.Stat, current);
+                        dirty = true;
+                    }
+                }
+                else if (delta > 0 && SteamUserStats.GetStat(entry.Stat, out int statCurrent))
+                {
+                    // Delta model: Steam has no "increment stat by N" call, only "set stat to this
+                    // absolute value", so read the cached value and add delta to it.
+                    SteamUserStats.SetStat(entry.Stat, statCurrent + delta);
+                    dirty = true;
+                }
             }
 
-            if (completed && !string.IsNullOrEmpty(entry.Achievement))
+            if (entry.Mode == SteamUnlockMode.ExplicitAchievement && completed && !string.IsNullOrEmpty(entry.Achievement))
             {
                 // GetAchievement's out param tells us whether it's already unlocked — skip
                 // re-unlocking (and marking dirty) if there's nothing to do.
@@ -341,7 +357,9 @@ namespace Wagenheimer.NativeSocial
             foreach (var locId in completedLocIds)
             {
                 if (locId == null) continue;
-                if (_steamMap.TryGetValue(locId, out var entry) && !string.IsNullOrEmpty(entry.Achievement))
+                if (_steamMap.TryGetValue(locId, out var entry) &&
+                    entry.Mode == SteamUnlockMode.ExplicitAchievement &&
+                    !string.IsNullOrEmpty(entry.Achievement))
                 {
                     if (!SteamUserStats.GetAchievement(entry.Achievement, out bool already) || !already)
                     {
@@ -529,21 +547,60 @@ namespace Wagenheimer.NativeSocial
 
     // ── Types ─────────────────────────────────────────────────────────
 
-    /// <summary>Steam achievement definition (stat + achievement API name).</summary>
+    /// <summary>
+    /// How the game drives a Steam achievement.
+    /// <see cref="ExplicitAchievement"/>: on completion the game calls <c>SetAchievement</c> with
+    /// <see cref="SteamEntry.Achievement"/>. <see cref="StatThreshold"/>: the game only writes the
+    /// stat and Steamworks auto-unlocks the achievement configured for that stat at its threshold
+    /// (the legacy Storm Tale 2 model) — no <c>SetAchievement</c> call is made.
+    /// </summary>
+    public enum SteamUnlockMode
+    {
+        /// <summary>Game calls SetAchievement(Achievement) when the achievement is completed.</summary>
+        ExplicitAchievement = 0,
+
+        /// <summary>Game only writes the stat; Steamworks unlocks the achievement from the stat threshold.</summary>
+        StatThreshold = 1
+    }
+
+    /// <summary>Steam achievement definition (stat + achievement API name + unlock model).</summary>
     public struct SteamEntry
     {
         /// <summary>Steamworks stat API name (e.g. "STAT_WILDCARDS"), or empty if this achievement has no backing stat.</summary>
         public string Stat;
 
-        /// <summary>Steamworks achievement API name (e.g. "ACH_WILDCARDS").</summary>
+        /// <summary>Steamworks achievement API name (e.g. "ACH_WILDCARDS"). Ignored when <see cref="Mode"/> is <see cref="SteamUnlockMode.StatThreshold"/>.</summary>
         public string Achievement;
 
+        /// <summary>Whether the achievement is unlocked explicitly by the game or by a Steamworks stat threshold. Defaults preserve the pre-existing behavior.</summary>
+        public SteamUnlockMode Mode;
+
+        /// <summary>
+        /// When true, <see cref="NativeSocial.Report"/> writes the absolute <c>current</c> value to
+        /// <see cref="Stat"/> (legacy "set the counter" model). When false, it adds the reported delta
+        /// to the stat's cached value.
+        /// </summary>
+        public bool SetStatAbsolute;
+
         /// <param name="stat">Steamworks stat API name, or empty/null if this achievement has no backing stat (only unlocks, never increments).</param>
-        /// <param name="achievement">Steamworks achievement API name.</param>
+        /// <param name="achievement">Steamworks achievement API name. Empty means "no explicit unlock" (<see cref="SteamUnlockMode.StatThreshold"/>).</param>
         public SteamEntry(string stat, string achievement)
+            : this(stat, achievement,
+                string.IsNullOrEmpty(achievement) ? SteamUnlockMode.StatThreshold : SteamUnlockMode.ExplicitAchievement,
+                false)
+        {
+        }
+
+        /// <param name="stat">Steamworks stat API name, or empty/null if this achievement has no backing stat.</param>
+        /// <param name="achievement">Steamworks achievement API name, or empty when <see cref="SteamUnlockMode.StatThreshold"/>.</param>
+        /// <param name="mode">Explicit game unlock vs. Steamworks stat threshold.</param>
+        /// <param name="setStatAbsolute">Write the stat as an absolute value instead of adding a delta.</param>
+        public SteamEntry(string stat, string achievement, SteamUnlockMode mode, bool setStatAbsolute)
         {
             Stat = stat;
             Achievement = achievement;
+            Mode = mode;
+            SetStatAbsolute = setStatAbsolute;
         }
     }
 }
