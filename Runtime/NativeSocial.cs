@@ -37,6 +37,36 @@ namespace Wagenheimer.NativeSocial
         private static bool _initialized;
         private static bool _warnedBeforeInitialize;
 
+        /// <summary>Whether NativeSocial.Initialize has been called.</summary>
+        public static bool IsInitialized => _initialized;
+
+        /// <summary>Active Android achievement LocID to Google Play Games ID mapping.</summary>
+        public static IReadOnlyDictionary<string, string> AndroidMap => _androidMap ?? (_androidMap = new Dictionary<string, string>());
+
+        /// <summary>Active iOS achievement LocID to Game Center ID mapping.</summary>
+        public static IReadOnlyDictionary<string, string> IosMap => _iosMap ?? (_iosMap = new Dictionary<string, string>());
+
+        /// <summary>Active Steam achievement LocID to SteamEntry mapping.</summary>
+        public static IReadOnlyDictionary<string, SteamEntry> SteamMap => _steamMap ?? (_steamMap = new Dictionary<string, SteamEntry>());
+
+        /// <summary>Active Android leaderboard LocID to Google Play Games ID mapping.</summary>
+        public static IReadOnlyDictionary<string, string> AndroidLeaderboardMap => _androidLeaderboardMap ?? (_androidLeaderboardMap = new Dictionary<string, string>());
+
+        /// <summary>Active iOS leaderboard LocID to Game Center ID mapping.</summary>
+        public static IReadOnlyDictionary<string, string> IosLeaderboardMap => _iosLeaderboardMap ?? (_iosLeaderboardMap = new Dictionary<string, string>());
+
+        /// <summary>Fired whenever Report is called: (locId, delta, current, total, completed).</summary>
+        public static event Action<string, int, int, int, bool> OnReport;
+
+        /// <summary>Fired whenever SubmitScore is called: (locId, score).</summary>
+        public static event Action<string, long> OnSubmitScore;
+
+        /// <summary>Fired whenever an authentication attempt finishes: (success).</summary>
+        public static event Action<bool> OnAuthenticated;
+
+        /// <summary>Fired on internal NativeSocial logging / diagnostics: (message).</summary>
+        public static event Action<string> OnLog;
+
         /// <summary>
         /// Register achievement ID maps per platform.
         /// Must be called once at game startup before any Report/Auth calls.
@@ -59,6 +89,8 @@ namespace Wagenheimer.NativeSocial
             _androidLeaderboardMap = androidLeaderboardMap ?? new Dictionary<string, string>();
             _iosLeaderboardMap = iosLeaderboardMap ?? new Dictionary<string, string>();
             _initialized = true;
+
+            OnLog?.Invoke($"[NativeSocial] Initialized. Android={_androidMap.Count}, iOS={_iosMap.Count}, Steam={_steamMap.Count}");
         }
 
         // ── Status ────────────────────────────────────────────────────
@@ -110,8 +142,12 @@ namespace Wagenheimer.NativeSocial
                     _warnedBeforeInitialize = true;
                     Debug.LogWarning("[NativeSocial] Report called before Initialize.");
                 }
+                OnLog?.Invoke($"[NativeSocial] Report('{locId}') rejected: not initialized.");
                 return;
             }
+
+            OnReport?.Invoke(locId, delta, current, total, completed);
+            OnLog?.Invoke($"[NativeSocial] Report('{locId}', delta={delta}, {current}/{total}, comp={completed})");
 
             // Exactly one of these branches is compiled in per build target — there is
             // no runtime platform switch here, each build only ever contains its own path.
@@ -335,6 +371,9 @@ namespace Wagenheimer.NativeSocial
         {
             if (!_initialized || locId == null) return;
 
+            OnSubmitScore?.Invoke(locId, score);
+            OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}', score={score})");
+
 #if UNITY_ANDROID
             if (IsAuthenticated && _androidLeaderboardMap.TryGetValue(locId, out var androidId))
                 PlayGamesPlatform.Instance.ReportScore(score, androidId, _ => { });
@@ -394,15 +433,24 @@ namespace Wagenheimer.NativeSocial
             // entry point Unity exposes for Game Center authentication — GameCenterPlatform itself has
             // no direct Authenticate method. This is an intentional, unavoidable use of the deprecated
             // API surface, not leftover code to "clean up"; removing it would break iOS auth entirely.
-            Social.localUser.Authenticate(success => callback?.Invoke(success));
+            Social.localUser.Authenticate(success =>
+            {
+                OnAuthenticated?.Invoke(success);
+                OnLog?.Invoke($"[NativeSocial] Game Center Authenticate: {success}");
+                callback?.Invoke(success);
+            });
 #elif UNITY_ANDROID
             PlayGamesPlatform.Instance.Authenticate(status =>
             {
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
+                OnAuthenticated?.Invoke(success);
+                OnLog?.Invoke($"[NativeSocial] GPGS Authenticate: {status} ({success})");
                 callback?.Invoke(success);
             });
 #else
+            OnAuthenticated?.Invoke(false);
+            OnLog?.Invoke("[NativeSocial] Authenticate not supported on current platform.");
             callback?.Invoke(false);
 #endif
         }
@@ -420,9 +468,12 @@ namespace Wagenheimer.NativeSocial
             {
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
+                OnAuthenticated?.Invoke(success);
+                OnLog?.Invoke($"[NativeSocial] GPGS ManuallyAuthenticate: {status} ({success})");
                 callback?.Invoke(success);
             });
 #else
+            OnAuthenticated?.Invoke(false);
             callback?.Invoke(false);
 #endif
         }

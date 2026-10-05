@@ -283,9 +283,21 @@ Show platform-native achievements UI.
 ### `NativeSocial.Authenticate(callback)`
 Authenticate with Game Center (iOS) / Google Play Games (Android).
 
-### `NativeSocial.Flush()` (Steam only)
-Flush pending Steam stats.
+## In-Game Runtime Debug Overlay (`NativeSocialDebugOverlay`)
+
+Universal in-game UI Toolkit debug panel for testing achievements, authentication, leaderboards, and native UI dialogs in Development Builds and Unity Editor:
+
+- **Automatic Lifecycle**: Automatically attaches in Editor and Development Builds via `[RuntimeInitializeOnLoadMethod]` — zero manual scene setup required.
+- **Hot-key & Floating Pill**: Toggle anytime with `F7` or click the draggable floating `"🎮 SOCIAL DBG"` button on screen.
+- **Live Status Indicator**: Floating LED dot shows platform connection state (🟢 Green = Connected/Signed in, 🟠 Amber = Initialized/Offline, 🔴 Red = Error/Uninitialized).
+- **Interactive Achievement Tester**: Real-time cards for all mapped achievements with live progress bars, `+1 Step`, `+5 Steps`, `✓ Unlock (100%)`, and `↺ Reset` buttons.
+- **Search & Filters**: Search by title, LocID or platform key, filter by target platform (Android / iOS / Steam) and status (In Progress / Completed).
+- **Quick Platform Actions**: 1-click `Authenticate`, `Manual Auth (GPGS)`, `Show Achievements UI`, `Show Leaderboard UI`, and `Re-Sync Completed`.
+- **Manual Command Dispatcher**: Ad-hoc tool to report any custom LocID with delta, current, and total steps, or submit leaderboard scores.
+- **Live Event Log**: Real-time console tracking all `Report`, `Authenticate`, and `SubmitScore` calls with timestamps and severity highlights.
+- **Mobile-Friendly**: Live zoom adjustment (`A-` / `A+`) and full-screen maximize (`⛶`) with PlayerPrefs persistence.
 
 ## License
 
 MIT
+

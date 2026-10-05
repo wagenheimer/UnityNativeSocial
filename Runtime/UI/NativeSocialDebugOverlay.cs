@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -7,10 +9,11 @@ namespace Wagenheimer.NativeSocial.UI
 {
     /// <summary>
     /// In-game runtime UI Toolkit debug overlay for inspecting and testing NativeSocial.
-    /// Provides live authentication state, achievement progress triggers, leaderboard testing,
-    /// and platform UI callers in Unity Editor and Development Builds.
+    /// Provides live authentication state, visual achievement cards with progress simulation,
+    /// leaderboard triggers, manual command dispatch, and a live event stream in
+    /// Unity Editor and Development Builds.
     /// </summary>
-    [AddComponentMenu("Wagenheimer/Native Social/Native Social Debug Overlay")]
+    [AddComponentMenu("Tools/Wagenheimer/Native Social/Native Social Debug Overlay")]
     [DisallowMultipleComponent]
     public class NativeSocialDebugOverlay : MonoBehaviour
     {
@@ -18,7 +21,7 @@ namespace Wagenheimer.NativeSocial.UI
 
         [Header("Runtime Access")]
         [Tooltip("Hot key to toggle debug panel visibility in game.")]
-        public KeyCode toggleKey = KeyCode.F8;
+        public KeyCode toggleKey = KeyCode.F7;
 
         [Tooltip("Whether to draw a small floating 'SOCIAL DBG' button on screen.")]
         public bool showFloatingButton = true;
@@ -26,7 +29,7 @@ namespace Wagenheimer.NativeSocial.UI
         [Tooltip("Allow overlay to run even in non-development / release builds. Strongly recommended FALSE for production.")]
         public bool enableInReleaseBuilds = false;
 
-        [Tooltip("Optional custom PanelSettings. If null, a high-priority runtime PanelSettings is created automatically.")]
+        [Tooltip("Optional custom PanelSettings. If null, uses Wagenheimer/NativeSocialDebugPanelSettings or high-priority runtime fallback.")]
         public PanelSettings customPanelSettings;
 
         [Header("Scale (mobile-friendly)")]
@@ -54,17 +57,28 @@ namespace Wagenheimer.NativeSocial.UI
         private bool _isMaximized;
         private Label _zoomLabel;
         private StyleLength _restoreLeft, _restoreRight, _restoreTop, _restoreWidth, _restoreHeight, _restoreMaxHeight;
+
         private VisualElement _floatingBtn;
+        private VisualElement _floatingDot;
         private VisualElement _window;
         private ScrollView _scrollView;
 
+        // Header and diagnostics
         private Label _statusBanner;
         private Label _statusSubtext;
         private Label _platformLabel;
         private Label _authStatusLabel;
-        private Label _steamStatusLabel;
+        private Label _userLabel;
+        private Label _mapsCountLabel;
 
-        // Test form inputs
+        // Filter and Search for Achievements
+        private string _searchFilter = "";
+        private string _platformFilter = "All"; // All, Android, iOS, Steam
+        private string _statusFilter = "All";   // All, InProgress, Completed
+        private VisualElement _achievementsContainer;
+        private Label _achCountBadge;
+
+        // Custom tester fields
         private TextField _locIdInput;
         private IntegerField _deltaInput;
         private IntegerField _currentInput;
@@ -74,15 +88,20 @@ namespace Wagenheimer.NativeSocial.UI
         private TextField _lbIdInput;
         private LongField _scoreInput;
 
+        // Log container
         private VisualElement _eventLogContainer;
-        private readonly List<string> _eventHistory = new List<string>();
-        private const int MaxHistoryCount = 12;
+        private readonly List<LogItem> _eventHistory = new List<LogItem>();
+        private const int MaxHistoryCount = 60;
+        private string _logFilter = "All"; // All, Reports, Auth, Errors
+
+        // Progress simulation memory
+        private readonly Dictionary<string, SimProgress> _simProgressMap = new Dictionary<string, SimProgress>();
 
         private bool _isOpen;
         private float _lastRefreshTime;
         private const float RefreshInterval = 0.5f;
 
-        // Drag state
+        // Window drag state
         private bool _isDragging;
         private Vector2 _dragStartPointer;
         private Vector2 _dragStartWindowPos;
@@ -93,9 +112,58 @@ namespace Wagenheimer.NativeSocial.UI
         private Vector2 _floatingDragStartPos;
         private bool _hasDraggedFloating;
 
+        private struct LogItem
+        {
+            public string Time;
+            public string Message;
+            public LogType Type;
+        }
+
+        private class SimProgress
+        {
+            public int Current;
+            public int Total = 100;
+            public bool Completed;
+        }
+
         #endregion
 
-        #region Unity Lifecycle
+        #region Palette
+
+        private static readonly Color ColorAccentCyan   = new Color(0.00f, 0.85f, 0.95f);
+        private static readonly Color ColorAccentGreen  = new Color(0.18f, 0.85f, 0.45f);
+        private static readonly Color ColorAccentAmber  = new Color(0.98f, 0.72f, 0.20f);
+        private static readonly Color ColorAccentRed    = new Color(0.95f, 0.32f, 0.30f);
+        private static readonly Color ColorAccentPurple = new Color(0.70f, 0.45f, 0.98f);
+        private static readonly Color ColorTextMuted    = new Color(0.65f, 0.75f, 0.85f);
+        private static readonly Color ColorCardBg       = new Color(0.07f, 0.10f, 0.15f, 0.95f);
+        private static readonly Color ColorCardBorder   = new Color(0.12f, 0.22f, 0.32f);
+
+        #endregion
+
+        #region Auto-Initialization & Lifecycle
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void AutoInitialize()
+        {
+            if (!Debug.isDebugBuild && !Application.isEditor)
+                return;
+
+            EnsureOverlay();
+        }
+
+        /// <summary>
+        /// Creates or returns the single runtime instance of NativeSocialDebugOverlay.
+        /// </summary>
+        public static NativeSocialDebugOverlay EnsureOverlay()
+        {
+            var existing = FindFirstObjectByType<NativeSocialDebugOverlay>();
+            if (existing != null) return existing;
+
+            var go = new GameObject("[NativeSocialDebugOverlay]");
+            DontDestroyOnLoad(go);
+            return go.AddComponent<NativeSocialDebugOverlay>();
+        }
 
         private void Awake()
         {
@@ -109,6 +177,22 @@ namespace Wagenheimer.NativeSocial.UI
             InitializeUI();
         }
 
+        private void OnEnable()
+        {
+            NativeSocial.OnReport += HandleOnReport;
+            NativeSocial.OnSubmitScore += HandleOnSubmitScore;
+            NativeSocial.OnAuthenticated += HandleOnAuthenticated;
+            NativeSocial.OnLog += HandleOnLog;
+        }
+
+        private void OnDisable()
+        {
+            NativeSocial.OnReport -= HandleOnReport;
+            NativeSocial.OnSubmitScore -= HandleOnSubmitScore;
+            NativeSocial.OnAuthenticated -= HandleOnAuthenticated;
+            NativeSocial.OnLog -= HandleOnLog;
+        }
+
         private void Update()
         {
             if (Input.GetKeyDown(toggleKey))
@@ -119,13 +203,64 @@ namespace Wagenheimer.NativeSocial.UI
             if (_isOpen && Time.unscaledTime - _lastRefreshTime >= RefreshInterval)
             {
                 _lastRefreshTime = Time.unscaledTime;
-                RefreshData();
+                RefreshDiagnostics();
             }
         }
 
         #endregion
 
-        #region UI Toolkit Initialization
+        #region Event Callbacks
+
+        private void HandleOnReport(string locId, int delta, int current, int total, bool completed)
+        {
+            UpdateSimProgress(locId, delta, current, total, completed);
+            AddLog($"[REPORT] {locId} (Δ+{delta}, {current}/{total}, comp={completed})", completed ? LogType.Log : LogType.Log);
+            if (_isOpen) RefreshAchievementsList();
+        }
+
+        private void HandleOnSubmitScore(string locId, long score)
+        {
+            AddLog($"[SCORE] {locId} => {score}", LogType.Log);
+        }
+
+        private void HandleOnAuthenticated(bool success)
+        {
+            AddLog($"[AUTH] Result: {(success ? "SUCCESS" : "FAILED")}", success ? LogType.Log : LogType.Warning);
+            RefreshDiagnostics();
+        }
+
+        private void HandleOnLog(string msg)
+        {
+            AddLog(msg, LogType.Log);
+        }
+
+        private void UpdateSimProgress(string locId, int delta, int current, int total, bool completed)
+        {
+            if (string.IsNullOrEmpty(locId)) return;
+            if (!_simProgressMap.TryGetValue(locId, out var sim))
+            {
+                sim = new SimProgress();
+                _simProgressMap[locId] = sim;
+            }
+
+            if (total > 0) sim.Total = total;
+            if (completed)
+            {
+                sim.Completed = true;
+                sim.Current = sim.Total;
+            }
+            else
+            {
+                if (current > 0) sim.Current = current;
+                else if (delta > 0) sim.Current += delta;
+
+                if (sim.Current >= sim.Total) sim.Completed = true;
+            }
+        }
+
+        #endregion
+
+        #region UI Toolkit Setup
 
         private void InitializeUI()
         {
@@ -149,7 +284,8 @@ namespace Wagenheimer.NativeSocial.UI
             BuildWindow();
 
             SetOpen(false);
-            RefreshData();
+            RefreshDiagnostics();
+            RefreshAchievementsList();
         }
 
         private float LoadZoom()
@@ -206,7 +342,8 @@ namespace Wagenheimer.NativeSocial.UI
                 return;
             }
 
-            var loaded = Resources.Load<PanelSettings>("Wagenheimer/DebugPanelSettings");
+            var loaded = Resources.Load<PanelSettings>("Wagenheimer/DebugPanelSettings")
+                         ?? Resources.Load<PanelSettings>("Wagenheimer/NativeSocialDebugPanelSettings");
             if (loaded != null)
             {
                 _uiDocument.panelSettings = loaded;
@@ -215,11 +352,18 @@ namespace Wagenheimer.NativeSocial.UI
 
             var ps = ScriptableObject.CreateInstance<PanelSettings>();
             ps.name = "NativeSocialDebugPanelSettings";
-            ps.sortingOrder = 9996;
+            ps.sortingOrder = 9997;
             ps.scaleMode = PanelScaleMode.ScaleWithScreenSize;
             ps.referenceResolution = BaseReferenceResolution;
             ps.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
             ps.match = 0.5f;
+
+            var themes = Resources.FindObjectsOfTypeAll<ThemeStyleSheet>();
+            if (themes != null && themes.Length > 0)
+            {
+                ps.themeStyleSheet = themes[0];
+            }
+
             _uiDocument.panelSettings = ps;
         }
 
@@ -232,32 +376,40 @@ namespace Wagenheimer.NativeSocial.UI
             if (!showFloatingButton) return;
 
             _floatingBtn = new VisualElement();
+            _floatingBtn.name = "NativeSocialDebugFloatingButton";
+            _floatingBtn.pickingMode = PickingMode.Position;
             var st = _floatingBtn.style;
             st.position = Position.Absolute;
-            st.right = 16;
-            st.top = 150;
-            st.backgroundColor = new Color(0.04f, 0.32f, 0.38f, 0.92f);
+            st.right = 18;
+            st.bottom = 60;
+            st.height = 34;
+            st.backgroundColor = new Color(0.06f, 0.12f, 0.18f, 0.94f);
             st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = new Color(0.00f, 0.75f, 0.85f, 0.85f);
-            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1.5f;
-            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 20;
-            st.paddingLeft = st.paddingRight = 14;
-            st.paddingTop = st.paddingBottom = 8;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1.2f;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 17;
+            st.paddingLeft = st.paddingRight = 12;
             st.flexDirection = FlexDirection.Row;
             st.alignItems = Align.Center;
+            st.justifyContent = Justify.Center;
 
-            var iconLbl = new Label("🎮");
-            iconLbl.style.fontSize = 13;
-            iconLbl.style.marginRight = 6;
-            _floatingBtn.Add(iconLbl);
+            _floatingDot = new VisualElement();
+            _floatingDot.style.width = 8;
+            _floatingDot.style.height = 8;
+            _floatingDot.style.borderTopLeftRadius = _floatingDot.style.borderTopRightRadius =
+                _floatingDot.style.borderBottomLeftRadius = _floatingDot.style.borderBottomRightRadius = 4;
+            _floatingDot.style.backgroundColor = ColorAccentAmber;
+            _floatingDot.style.marginRight = 6;
+            _floatingBtn.Add(_floatingDot);
 
-            var textLbl = new Label("SOCIAL DBG");
-            textLbl.style.fontSize = 11;
-            textLbl.style.color = Color.white;
-            textLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _floatingBtn.Add(textLbl);
+            var label = new Label("🎮 SOCIAL DBG");
+            label.style.fontSize = 11.5f;
+            label.style.color = Color.white;
+            label.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _floatingBtn.Add(label);
 
             _floatingBtn.RegisterCallback<PointerDownEvent>(evt =>
             {
+                if (evt.button != 0 || _isMaximized) return;
                 _isFloatingDragging = true;
                 _hasDraggedFloating = false;
                 _floatingDragStartPointer = evt.position;
@@ -269,12 +421,16 @@ namespace Wagenheimer.NativeSocial.UI
             _floatingBtn.RegisterCallback<PointerMoveEvent>(evt =>
             {
                 if (!_isFloatingDragging) return;
-                var delta = (Vector2)evt.position - _floatingDragStartPointer;
-                if (delta.sqrMagnitude > 16) _hasDraggedFloating = true;
+                Vector2 delta = (Vector2)evt.position - _floatingDragStartPointer;
+                if (delta.sqrMagnitude > 16f) _hasDraggedFloating = true;
 
-                st.left = Mathf.Max(0, _floatingDragStartPos.x + delta.x);
-                st.top = Mathf.Max(0, _floatingDragStartPos.y + delta.y);
-                st.right = StyleKeyword.Auto;
+                if (_hasDraggedFloating)
+                {
+                    _floatingBtn.style.bottom = StyleKeyword.Auto;
+                    _floatingBtn.style.right = StyleKeyword.Auto;
+                    _floatingBtn.style.left = Mathf.Max(0, _floatingDragStartPos.x + delta.x);
+                    _floatingBtn.style.top = Mathf.Max(0, _floatingDragStartPos.y + delta.y);
+                }
                 evt.StopPropagation();
             });
 
@@ -296,20 +452,23 @@ namespace Wagenheimer.NativeSocial.UI
 
         #endregion
 
-        #region Window Construction
+        #region Main Window Construction
 
         private void BuildWindow()
         {
             _window = new VisualElement();
+            _window.name = "NativeSocialDebugWindow";
+            _window.pickingMode = PickingMode.Position;
             var st = _window.style;
             st.position = Position.Absolute;
             st.right = 20;
-            st.top = 40;
-            st.width = 460;
-            st.maxHeight = new StyleLength(new Length(86, LengthUnit.Percent));
-            st.backgroundColor = new Color(0.06f, 0.08f, 0.12f, 0.97f);
+            st.top = 36;
+            st.width = 520;
+            st.maxWidth = new StyleLength(new Length(96, LengthUnit.Percent));
+            st.maxHeight = new StyleLength(new Length(88, LengthUnit.Percent));
+            st.backgroundColor = new Color(0.05f, 0.08f, 0.12f, 0.98f);
             st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = new Color(0.12f, 0.28f, 0.38f);
-            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1.5f;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1.2f;
             st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 10;
             st.overflow = Overflow.Hidden;
 
@@ -317,15 +476,16 @@ namespace Wagenheimer.NativeSocial.UI
 
             _scrollView = new ScrollView(ScrollViewMode.Vertical);
             _scrollView.style.flexGrow = 1;
-            _scrollView.style.paddingLeft = _scrollView.style.paddingRight = 14;
-            _scrollView.style.paddingTop = _scrollView.style.paddingBottom = 12;
+            _scrollView.style.paddingLeft = _scrollView.style.paddingRight = 12;
+            _scrollView.style.paddingTop = 10;
+            _scrollView.style.paddingBottom = 14;
             _window.Add(_scrollView);
 
-            BuildStatusSection();
-            BuildAuthSection();
-            BuildAchievementSection();
-            BuildLeaderboardSection();
-            BuildLogSection();
+            _scrollView.Add(BuildStatusSection());
+            _scrollView.Add(BuildQuickActionsSection());
+            _scrollView.Add(BuildAchievementsSection());
+            _scrollView.Add(BuildManualDispatcherSection());
+            _scrollView.Add(BuildLogSection());
 
             _root.Add(_window);
         }
@@ -337,11 +497,12 @@ namespace Wagenheimer.NativeSocial.UI
             hst.flexDirection = FlexDirection.Row;
             hst.alignItems = Align.Center;
             hst.justifyContent = Justify.SpaceBetween;
-            hst.backgroundColor = new Color(0.07f, 0.15f, 0.22f);
-            hst.borderBottomColor = new Color(0.12f, 0.28f, 0.38f);
+            hst.height = 38;
+            hst.backgroundColor = new Color(0.08f, 0.14f, 0.22f);
+            hst.borderBottomColor = new Color(0.14f, 0.25f, 0.35f);
             hst.borderBottomWidth = 1;
-            hst.paddingLeft = hst.paddingRight = 12;
-            hst.paddingTop = hst.paddingBottom = 8;
+            hst.paddingLeft = 12;
+            hst.paddingRight = 8;
 
             var titleRow = new VisualElement();
             titleRow.style.flexDirection = FlexDirection.Row;
@@ -350,8 +511,20 @@ namespace Wagenheimer.NativeSocial.UI
             var titleLbl = new Label("🎮 Native Social Debug");
             titleLbl.style.fontSize = 13;
             titleLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
-            titleLbl.style.color = new Color(0.00f, 0.85f, 0.95f);
+            titleLbl.style.color = ColorAccentCyan;
             titleRow.Add(titleLbl);
+
+            var badge = new Label($"[{Application.platform}]");
+            badge.style.fontSize = 9.5f;
+            badge.style.color = ColorTextMuted;
+            badge.style.marginLeft = 6;
+            badge.style.backgroundColor = new Color(0.04f, 0.08f, 0.12f);
+            badge.style.paddingLeft = badge.style.paddingRight = 5;
+            badge.style.paddingTop = badge.style.paddingBottom = 2;
+            badge.style.borderTopLeftRadius = badge.style.borderTopRightRadius =
+                badge.style.borderBottomLeftRadius = badge.style.borderBottomRightRadius = 3;
+            titleRow.Add(badge);
+
             header.Add(titleRow);
 
             var ctrlRow = new VisualElement();
@@ -375,10 +548,10 @@ namespace Wagenheimer.NativeSocial.UI
             ctrlRow.Add(closeBtn);
             header.Add(ctrlRow);
 
-            // Drag window header
+            // Drag handling
             header.RegisterCallback<PointerDownEvent>(evt =>
             {
-                if (_isMaximized) return;
+                if (evt.button != 0 || _isMaximized) return;
                 _isDragging = true;
                 _dragStartPointer = evt.position;
                 _dragStartWindowPos = new Vector2(_window.resolvedStyle.left, _window.resolvedStyle.top);
@@ -407,97 +580,522 @@ namespace Wagenheimer.NativeSocial.UI
             _window.Add(header);
         }
 
-        private void BuildStatusSection()
+        #endregion
+
+        #region Card 1: Status & Diagnostics
+
+        private VisualElement BuildStatusSection()
         {
             var card = CreateCard("Environment & Diagnostics");
-            _statusBanner = new Label("CHECKING...");
-            _statusBanner.style.fontSize = 13;
-            _statusBanner.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _statusBanner.style.color = Color.yellow;
-            card.Add(_statusBanner);
 
-            _statusSubtext = new Label("Evaluating platform integration...");
+            var bannerBox = new VisualElement();
+            bannerBox.style.paddingTop = bannerBox.style.paddingBottom = 6;
+            bannerBox.style.paddingLeft = bannerBox.style.paddingRight = 8;
+            bannerBox.style.backgroundColor = new Color(0.04f, 0.07f, 0.11f);
+            bannerBox.style.borderTopLeftRadius = bannerBox.style.borderTopRightRadius =
+                bannerBox.style.borderBottomLeftRadius = bannerBox.style.borderBottomRightRadius = 5;
+            bannerBox.style.marginBottom = 8;
+
+            _statusBanner = new Label("CHECKING...");
+            _statusBanner.style.fontSize = 12.5f;
+            _statusBanner.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _statusBanner.style.color = ColorAccentAmber;
+            bannerBox.Add(_statusBanner);
+
+            _statusSubtext = new Label("Evaluating social platform integration...");
             _statusSubtext.style.fontSize = 10;
-            _statusSubtext.style.color = new Color(0.6f, 0.75f, 0.85f);
+            _statusSubtext.style.color = ColorTextMuted;
             _statusSubtext.style.marginTop = 2;
             _statusSubtext.style.whiteSpace = WhiteSpace.Normal;
-            card.Add(_statusSubtext);
+            bannerBox.Add(_statusSubtext);
+            card.Add(bannerBox);
 
             _platformLabel = CreateRow(card, "Platform Target:", Application.platform.ToString());
             _authStatusLabel = CreateRow(card, "Auth State:", "-");
-            _steamStatusLabel = CreateRow(card, "Steam API:", "-");
+            _userLabel = CreateRow(card, "Player Info:", "-");
+            _mapsCountLabel = CreateRow(card, "Registered Maps:", "-");
 
-            _scrollView.Add(card);
+            return card;
         }
 
-        private void BuildAuthSection()
+        #endregion
+
+        #region Card 2: Quick Actions
+
+        private VisualElement BuildQuickActionsSection()
         {
-            var card = CreateCard("Authentication Tests");
+            var card = CreateCard("Quick Platform Actions");
 
-            var btnRow = new VisualElement();
-            btnRow.style.flexDirection = FlexDirection.Row;
-            btnRow.style.marginBottom = 6;
+            var row1 = new VisualElement();
+            row1.style.flexDirection = FlexDirection.Row;
+            row1.style.marginBottom = 6;
 
-            var authBtn = CreateActionButton("Authenticate", () =>
+            var authBtn = CreateActionButton("🔑 Authenticate", () =>
             {
-                LogEvent("Calling NativeSocial.Authenticate()...");
+                AddLog("Calling NativeSocial.Authenticate()...", LogType.Log);
                 NativeSocial.Authenticate(success =>
                 {
-                    LogEvent($"Authenticate result: {success}");
-                    RefreshData();
+                    AddLog($"Authenticate result: {success}", success ? LogType.Log : LogType.Warning);
+                    RefreshDiagnostics();
                 });
             });
-            btnRow.Add(authBtn);
+            row1.Add(authBtn);
 
-            var authManualBtn = CreateActionButton("Auth Manual (GPGS)", () =>
+            var manualAuthBtn = CreateActionButton("👤 Manual Auth (GPGS)", () =>
             {
-                LogEvent("Calling NativeSocial.AuthenticateManually()...");
+                AddLog("Calling NativeSocial.AuthenticateManually()...", LogType.Log);
                 NativeSocial.AuthenticateManually(success =>
                 {
-                    LogEvent($"AuthenticateManually result: {success}");
-                    RefreshData();
+                    AddLog($"AuthenticateManually result: {success}", success ? LogType.Log : LogType.Warning);
+                    RefreshDiagnostics();
                 });
             });
-            btnRow.Add(authManualBtn);
-            card.Add(btnRow);
+            row1.Add(manualAuthBtn);
+            card.Add(row1);
 
-            var authCodeBtn = CreateActionButton("Get Server Auth Code", () =>
+            var row2 = new VisualElement();
+            row2.style.flexDirection = FlexDirection.Row;
+
+            var showAchBtn = CreateActionButton("🏆 Show Achievements UI", () =>
             {
-                LogEvent("Calling NativeSocial.GetServerAuthCode()...");
-                NativeSocial.GetServerAuthCode(code =>
-                {
-                    LogEvent($"Server Auth Code: {(string.IsNullOrEmpty(code) ? "null/empty" : code.Substring(0, Mathf.Min(8, code.Length)) + "...")}");
-                });
+                var shown = NativeSocial.ShowAchievementsUI();
+                AddLog($"ShowAchievementsUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
             });
-            card.Add(authCodeBtn);
+            row2.Add(showAchBtn);
 
-            _scrollView.Add(card);
+            var showLbBtn = CreateActionButton("📊 Show Leaderboard UI", () =>
+            {
+                var shown = NativeSocial.ShowLeaderboardUI();
+                AddLog($"ShowLeaderboardUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
+            });
+            row2.Add(showLbBtn);
+
+            var syncBtn = CreateActionButton("🔄 Re-Sync Completed", () =>
+            {
+                var completedKeys = _simProgressMap.Where(p => p.Value.Completed).Select(p => p.Key).ToList();
+                NativeSocial.SyncCompleted(completedKeys);
+                AddLog($"SyncCompleted dispatched for {completedKeys.Count} achievements.", LogType.Log);
+            });
+            row2.Add(syncBtn);
+
+            card.Add(row2);
+            return card;
         }
 
-        private void BuildAchievementSection()
-        {
-            var card = CreateCard("Achievement Testing");
+        #endregion
 
-            _locIdInput = new TextField("LocID Key") { value = "ach_first_win" };
+        #region Card 3: Interactive Achievements Explorer
+
+        private VisualElement BuildAchievementsSection()
+        {
+            var card = CreateCard("Achievements Explorer & Interactive Tester");
+
+            // Header info row
+            var topRow = new VisualElement();
+            topRow.style.flexDirection = FlexDirection.Row;
+            topRow.style.justifyContent = Justify.SpaceBetween;
+            topRow.style.alignItems = Align.Center;
+            topRow.style.marginBottom = 6;
+
+            var subTitle = new Label("Click actions to test live reports & progress");
+            subTitle.style.fontSize = 10;
+            subTitle.style.color = ColorTextMuted;
+            topRow.Add(subTitle);
+
+            _achCountBadge = new Label("0 items");
+            _achCountBadge.style.fontSize = 9.5f;
+            _achCountBadge.style.color = ColorAccentCyan;
+            topRow.Add(_achCountBadge);
+            card.Add(topRow);
+
+            // Search bar
+            var searchField = new TextField { placeholderText = "🔍 Search by title, LocID or platform key..." };
+            searchField.style.marginBottom = 6;
+            searchField.RegisterValueChangedCallback(evt =>
+            {
+                _searchFilter = evt.newValue ?? "";
+                RefreshAchievementsList();
+            });
+            card.Add(searchField);
+
+            // Filter pills
+            var filterRow = new VisualElement();
+            filterRow.style.flexDirection = FlexDirection.Row;
+            filterRow.style.marginBottom = 8;
+
+            filterRow.Add(CreateFilterPill("All", () => SetPlatformFilter("All"), _platformFilter == "All"));
+            filterRow.Add(CreateFilterPill("Android", () => SetPlatformFilter("Android"), _platformFilter == "Android"));
+            filterRow.Add(CreateFilterPill("iOS", () => SetPlatformFilter("iOS"), _platformFilter == "iOS"));
+            filterRow.Add(CreateFilterPill("Steam", () => SetPlatformFilter("Steam"), _platformFilter == "Steam"));
+
+            var spacer = new VisualElement { style = { flexGrow = 1 } };
+            filterRow.Add(spacer);
+
+            filterRow.Add(CreateFilterPill("Done", () => SetStatusFilter("Completed"), _statusFilter == "Completed"));
+            filterRow.Add(CreateFilterPill("In Progress", () => SetStatusFilter("InProgress"), _statusFilter == "InProgress"));
+            card.Add(filterRow);
+
+            _achievementsContainer = new VisualElement();
+            card.Add(_achievementsContainer);
+
+            return card;
+        }
+
+        private void SetPlatformFilter(string platform)
+        {
+            _platformFilter = platform;
+            RefreshAchievementsList();
+        }
+
+        private void SetStatusFilter(string status)
+        {
+            _statusFilter = _statusFilter == status ? "All" : status;
+            RefreshAchievementsList();
+        }
+
+        private void RefreshAchievementsList()
+        {
+            if (_achievementsContainer == null) return;
+            _achievementsContainer.Clear();
+
+            var entries = GatherAllAchievementEntries();
+            int displayedCount = 0;
+
+            foreach (var item in entries)
+            {
+                // Apply Search
+                if (!string.IsNullOrEmpty(_searchFilter))
+                {
+                    bool match = item.LocId.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                 item.Title.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                 (!string.IsNullOrEmpty(item.AndroidId) && item.AndroidId.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                 (!string.IsNullOrEmpty(item.AppleId) && item.AppleId.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                 (!string.IsNullOrEmpty(item.SteamStat) && item.SteamStat.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (!match) continue;
+                }
+
+                // Apply Platform Filter
+                if (_platformFilter == "Android" && string.IsNullOrEmpty(item.AndroidId)) continue;
+                if (_platformFilter == "iOS" && string.IsNullOrEmpty(item.AppleId)) continue;
+                if (_platformFilter == "Steam" && string.IsNullOrEmpty(item.SteamStat)) continue;
+
+                // Progress state
+                if (!_simProgressMap.TryGetValue(item.LocId, out var sim))
+                {
+                    sim = new SimProgress { Total = item.TotalSteps > 0 ? item.TotalSteps : 100 };
+                    _simProgressMap[item.LocId] = sim;
+                }
+
+                // Status Filter
+                if (_statusFilter == "Completed" && !sim.Completed) continue;
+                if (_statusFilter == "InProgress" && sim.Completed) continue;
+
+                displayedCount++;
+                _achievementsContainer.Add(BuildAchievementCard(item, sim));
+            }
+
+            if (_achCountBadge != null)
+            {
+                _achCountBadge.text = $"{displayedCount} / {entries.Count} items";
+            }
+
+            if (displayedCount == 0)
+            {
+                var emptyLabel = new Label("No matching achievements found.");
+                emptyLabel.style.fontSize = 10;
+                emptyLabel.style.color = ColorTextMuted;
+                emptyLabel.style.unityFontStyleAndWeight = FontStyle.Italic;
+                emptyLabel.style.paddingTop = emptyLabel.style.paddingBottom = 8;
+                _achievementsContainer.Add(emptyLabel);
+            }
+        }
+
+        private VisualElement BuildAchievementCard(AchievementItemView item, SimProgress sim)
+        {
+            var card = new VisualElement();
+            var st = card.style;
+            st.backgroundColor = new Color(0.04f, 0.07f, 0.11f);
+            st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor =
+                sim.Completed ? new Color(0.18f, 0.85f, 0.45f, 0.4f) : new Color(0.12f, 0.20f, 0.28f);
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 5;
+            st.paddingLeft = st.paddingRight = 8;
+            st.paddingTop = st.paddingBottom = 7;
+            st.marginBottom = 6;
+
+            // Title & Status Badge
+            var titleRow = new VisualElement();
+            titleRow.style.flexDirection = FlexDirection.Row;
+            titleRow.style.justifyContent = Justify.SpaceBetween;
+            titleRow.style.alignItems = Align.Center;
+
+            var titleLbl = new Label(item.Title);
+            titleLbl.style.fontSize = 11;
+            titleLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
+            titleLbl.style.color = sim.Completed ? ColorAccentGreen : Color.white;
+            titleRow.Add(titleLbl);
+
+            var statusBadge = new Label(sim.Completed ? "COMPLETED" : $"{sim.Current}/{sim.Total}");
+            statusBadge.style.fontSize = 9.5f;
+            statusBadge.style.unityFontStyleAndWeight = FontStyle.Bold;
+            statusBadge.style.color = sim.Completed ? ColorAccentGreen : ColorAccentCyan;
+            titleRow.Add(statusBadge);
+            card.Add(titleRow);
+
+            // Subtitle / IDs
+            var metaRow = new VisualElement();
+            metaRow.style.flexDirection = FlexDirection.Row;
+            metaRow.style.marginTop = 2;
+            metaRow.style.marginBottom = 4;
+
+            var locIdLbl = new Label($"LocID: {item.LocId}");
+            locIdLbl.style.fontSize = 9.5f;
+            locIdLbl.style.color = ColorTextMuted;
+            locIdLbl.style.marginRight = 8;
+            metaRow.Add(locIdLbl);
+
+            if (!string.IsNullOrEmpty(item.AndroidId))
+            {
+                var tag = CreateIdTag("GPGS", item.AndroidId);
+                metaRow.Add(tag);
+            }
+            if (!string.IsNullOrEmpty(item.AppleId))
+            {
+                var tag = CreateIdTag("iOS", item.AppleId);
+                metaRow.Add(tag);
+            }
+            if (!string.IsNullOrEmpty(item.SteamStat))
+            {
+                var tag = CreateIdTag("Steam", item.SteamStat);
+                metaRow.Add(tag);
+            }
+            card.Add(metaRow);
+
+            // Progress Bar
+            var track = new VisualElement();
+            track.style.height = 4;
+            track.style.backgroundColor = new Color(0.09f, 0.14f, 0.20f);
+            track.style.borderTopLeftRadius = track.style.borderTopRightRadius =
+                track.style.borderBottomLeftRadius = track.style.borderBottomRightRadius = 2;
+            track.style.marginBottom = 6;
+
+            var fill = new VisualElement();
+            fill.style.height = 4;
+            float percent = sim.Total > 0 ? Mathf.Clamp01((float)sim.Current / sim.Total) * 100f : (sim.Completed ? 100f : 0f);
+            fill.style.width = new StyleLength(new Length(percent, LengthUnit.Percent));
+            fill.style.backgroundColor = sim.Completed ? ColorAccentGreen : ColorAccentCyan;
+            track.Add(fill);
+            card.Add(track);
+
+            // Quick Actions Row
+            var actRow = new VisualElement();
+            actRow.style.flexDirection = FlexDirection.Row;
+
+            var add1Btn = CreateCardButton("+1 Step", () =>
+            {
+                int next = sim.Current + 1;
+                bool done = next >= sim.Total;
+                NativeSocial.Report(item.LocId, 1, next, sim.Total, done);
+            });
+            actRow.Add(add1Btn);
+
+            var add5Btn = CreateCardButton("+5 Steps", () =>
+            {
+                int next = sim.Current + 5;
+                bool done = next >= sim.Total;
+                NativeSocial.Report(item.LocId, 5, next, sim.Total, done);
+            });
+            actRow.Add(add5Btn);
+
+            var unlockBtn = CreateCardButton("✓ Unlock", () =>
+            {
+                NativeSocial.Report(item.LocId, 0, sim.Total, sim.Total, true);
+            }, ColorAccentGreen);
+            actRow.Add(unlockBtn);
+
+            var resetBtn = CreateCardButton("↺ Reset", () =>
+            {
+                sim.Current = 0;
+                sim.Completed = false;
+                AddLog($"[RESET] In-memory progress for {item.LocId} reset to 0.", LogType.Log);
+                RefreshAchievementsList();
+            });
+            actRow.Add(resetBtn);
+
+            card.Add(actRow);
+            return card;
+        }
+
+        private struct AchievementItemView
+        {
+            public string LocId;
+            public string Title;
+            public string AndroidId;
+            public string AppleId;
+            public string SteamStat;
+            public int TotalSteps;
+        }
+
+        private List<AchievementItemView> GatherAllAchievementEntries()
+        {
+            var result = new Dictionary<string, AchievementItemView>();
+
+            // 1. From loaded AchievementTierMap assets in Resources / scene
+            var mapAssets = Resources.FindObjectsOfTypeAll<AchievementTierMap>();
+            if (mapAssets != null)
+            {
+                foreach (var map in mapAssets)
+                {
+                    if (map.Entries == null) continue;
+                    foreach (var entry in map.Entries)
+                    {
+                        var loc = AchievementTierMap.LocId(entry.TrophyNumber, entry.Tier);
+                        string title = ResolveAchievementTitle(entry);
+
+                        result[loc] = new AchievementItemView
+                        {
+                            LocId = loc,
+                            Title = title,
+                            AndroidId = entry.GooglePlayId,
+                            AppleId = entry.AppleId,
+                            SteamStat = entry.SteamStat,
+                            TotalSteps = entry.StepsToUnlock > 0 ? entry.StepsToUnlock : 100
+                        };
+                    }
+                }
+            }
+
+            // 2. From registered NativeSocial Maps (if any were initialized directly without TierMap)
+            if (NativeSocial.AndroidMap != null)
+            {
+                foreach (var kvp in NativeSocial.AndroidMap)
+                {
+                    if (!result.TryGetValue(kvp.Key, out var item))
+                    {
+                        item = new AchievementItemView { LocId = kvp.Key, Title = kvp.Key, TotalSteps = 100 };
+                    }
+                    item.AndroidId = kvp.Value;
+                    result[kvp.Key] = item;
+                }
+            }
+
+            if (NativeSocial.IosMap != null)
+            {
+                foreach (var kvp in NativeSocial.IosMap)
+                {
+                    if (!result.TryGetValue(kvp.Key, out var item))
+                    {
+                        item = new AchievementItemView { LocId = kvp.Key, Title = kvp.Key, TotalSteps = 100 };
+                    }
+                    item.AppleId = kvp.Value;
+                    result[kvp.Key] = item;
+                }
+            }
+
+            if (NativeSocial.SteamMap != null)
+            {
+                foreach (var kvp in NativeSocial.SteamMap)
+                {
+                    if (!result.TryGetValue(kvp.Key, out var item))
+                    {
+                        item = new AchievementItemView { LocId = kvp.Key, Title = kvp.Key, TotalSteps = 100 };
+                    }
+                    item.SteamStat = kvp.Value.Stat ?? kvp.Value.Achievement;
+                    result[kvp.Key] = item;
+                }
+            }
+
+            return result.Values.OrderBy(x => x.LocId).ToList();
+        }
+
+        private string ResolveAchievementTitle(AchievementTierEntry entry)
+        {
+            // Attempt I2 Localization translation via reflection
+            if (!string.IsNullOrEmpty(entry.NameTerm))
+            {
+                string trans = TryGetI2Translation(entry.NameTerm);
+                if (!string.IsNullOrEmpty(trans))
+                {
+                    return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {trans}";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(entry.DisplayName))
+            {
+                return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)} - {entry.DisplayName}";
+            }
+
+            return $"Trophy {entry.TrophyNumber} · Tier {AchievementTierMap.RomanNumeral(entry.Tier)}";
+        }
+
+        private static MethodInfo _i2GetTranslationMethod;
+        private static bool _i2Resolved;
+
+        private static string TryGetI2Translation(string term)
+        {
+            if (!_i2Resolved)
+            {
+                _i2Resolved = true;
+                var locType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(a => a.GetType("I2.Loc.LocalizationManager"))
+                    .FirstOrDefault(t => t != null);
+                if (locType != null)
+                {
+                    _i2GetTranslationMethod = locType.GetMethod("GetTranslation", new[] { typeof(string), typeof(bool), typeof(int), typeof(bool), typeof(bool), typeof(GameObject), typeof(string) })
+                                              ?? locType.GetMethod("GetTranslation", new[] { typeof(string) });
+                }
+            }
+
+            if (_i2GetTranslationMethod != null)
+            {
+                try
+                {
+                    var pars = _i2GetTranslationMethod.GetParameters();
+                    if (pars.Length == 1)
+                        return _i2GetTranslationMethod.Invoke(null, new object[] { term }) as string;
+                    if (pars.Length == 7)
+                        return _i2GetTranslationMethod.Invoke(null, new object[] { term, true, 0, true, false, null, null }) as string;
+                }
+                catch { }
+            }
+
+            return null;
+        }
+
+        #endregion
+
+        #region Card 4: Manual Command Dispatcher
+
+        private VisualElement BuildManualDispatcherSection()
+        {
+            var card = CreateCard("Manual Command Dispatcher");
+
+            var achTitle = new Label("Custom Achievement Report");
+            achTitle.style.fontSize = 10.5f;
+            achTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            achTitle.style.color = ColorAccentCyan;
+            achTitle.style.marginBottom = 4;
+            card.Add(achTitle);
+
+            _locIdInput = new TextField("LocID Key") { value = "Trophy1_1" };
             card.Add(_locIdInput);
 
-            _deltaInput = new IntegerField("Delta (Android/Steam)") { value = 1 };
-            card.Add(_deltaInput);
-
-            _currentInput = new IntegerField("Current Progress (iOS)") { value = 1 };
-            card.Add(_currentInput);
-
-            _totalInput = new IntegerField("Total Required (iOS)") { value = 10 };
-            card.Add(_totalInput);
+            var numRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            _deltaInput = new IntegerField("Delta (+)") { value = 1 };
+            _deltaInput.style.flexGrow = 1;
+            _currentInput = new IntegerField("Current") { value = 1 };
+            _currentInput.style.flexGrow = 1;
+            _totalInput = new IntegerField("Total") { value = 10 };
+            _totalInput.style.flexGrow = 1;
+            numRow.Add(_deltaInput);
+            numRow.Add(_currentInput);
+            numRow.Add(_totalInput);
+            card.Add(numRow);
 
             _completedToggle = new Toggle("Complete Outright") { value = false };
             card.Add(_completedToggle);
 
-            var btnRow = new VisualElement();
-            btnRow.style.flexDirection = FlexDirection.Row;
-            btnRow.style.marginTop = 6;
-
-            var reportBtn = CreateActionButton("Report Progress", () =>
+            var sendReportBtn = CreateActionButton("🚀 Dispatch Report()", () =>
             {
                 var loc = _locIdInput.value;
                 var delta = _deltaInput.value;
@@ -505,25 +1103,20 @@ namespace Wagenheimer.NativeSocial.UI
                 var tot = _totalInput.value;
                 var comp = _completedToggle.value;
 
-                LogEvent($"Report('{loc}', delta={delta}, {cur}/{tot}, comp={comp})");
+                AddLog($"Manual Report('{loc}', delta={delta}, {cur}/{tot}, comp={comp})", LogType.Log);
                 NativeSocial.Report(loc, delta, cur, tot, comp);
             });
-            btnRow.Add(reportBtn);
+            sendReportBtn.style.marginTop = 4;
+            sendReportBtn.style.marginBottom = 10;
+            card.Add(sendReportBtn);
 
-            var uiBtn = CreateActionButton("Open Ach UI", () =>
-            {
-                var shown = NativeSocial.ShowAchievementsUI();
-                LogEvent($"ShowAchievementsUI() -> {shown}");
-            });
-            btnRow.Add(uiBtn);
-            card.Add(btnRow);
-
-            _scrollView.Add(card);
-        }
-
-        private void BuildLeaderboardSection()
-        {
-            var card = CreateCard("Leaderboard Testing");
+            // Leaderboard sub-section
+            var lbTitle = new Label("Custom Leaderboard Submission");
+            lbTitle.style.fontSize = 10.5f;
+            lbTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            lbTitle.style.color = ColorAccentPurple;
+            lbTitle.style.marginBottom = 4;
+            card.Add(lbTitle);
 
             _lbIdInput = new TextField("Leaderboard LocID") { value = "lb_high_score" };
             card.Add(_lbIdInput);
@@ -531,106 +1124,233 @@ namespace Wagenheimer.NativeSocial.UI
             _scoreInput = new LongField("Score Value") { value = 1000 };
             card.Add(_scoreInput);
 
-            var btnRow = new VisualElement();
-            btnRow.style.flexDirection = FlexDirection.Row;
-            btnRow.style.marginTop = 6;
-
-            var submitBtn = CreateActionButton("Submit Score", () =>
+            var lbBtnRow = new VisualElement { style = { flexDirection = FlexDirection.Row, marginTop = 4 } };
+            var submitBtn = CreateActionButton("📈 Submit Score", () =>
             {
                 var loc = _lbIdInput.value;
                 var sc = _scoreInput.value;
-                LogEvent($"SubmitScore('{loc}', {sc})");
                 NativeSocial.SubmitScore(loc, sc);
             });
-            btnRow.Add(submitBtn);
+            lbBtnRow.Add(submitBtn);
 
-            var showLbBtn = CreateActionButton("Open Leaderboard UI", () =>
+            var openLbBtn = CreateActionButton("Open UI", () =>
             {
                 var loc = _lbIdInput.value;
-                var shown = NativeSocial.ShowLeaderboardUI(loc);
-                LogEvent($"ShowLeaderboardUI('{loc}') -> {shown}");
+                NativeSocial.ShowLeaderboardUI(loc);
             });
-            btnRow.Add(showLbBtn);
-            card.Add(btnRow);
+            lbBtnRow.Add(openLbBtn);
+            card.Add(lbBtnRow);
 
-            _scrollView.Add(card);
+            return card;
         }
 
-        private void BuildLogSection()
+        #endregion
+
+        #region Card 5: Live Event Log
+
+        private VisualElement BuildLogSection()
         {
-            var card = CreateCard("Live Event Log");
+            var card = CreateCard("Live Event Log & Console");
+
+            var topRow = new VisualElement();
+            topRow.style.flexDirection = FlexDirection.Row;
+            topRow.style.justifyContent = Justify.SpaceBetween;
+            topRow.style.alignItems = Align.Center;
+            topRow.style.marginBottom = 6;
+
+            var filterRow = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            filterRow.Add(CreateFilterPill("All", () => SetLogFilter("All"), _logFilter == "All"));
+            filterRow.Add(CreateFilterPill("Reports", () => SetLogFilter("Reports"), _logFilter == "Reports"));
+            filterRow.Add(CreateFilterPill("Auth", () => SetLogFilter("Auth"), _logFilter == "Auth"));
+            filterRow.Add(CreateFilterPill("Errors", () => SetLogFilter("Errors"), _logFilter == "Errors"));
+            topRow.Add(filterRow);
+
+            var clearBtn = CreateMiniButton("Clear", () =>
+            {
+                _eventHistory.Clear();
+                RefreshEventLog();
+            });
+            topRow.Add(clearBtn);
+            card.Add(topRow);
+
             _eventLogContainer = new VisualElement();
             _eventLogContainer.style.backgroundColor = new Color(0.03f, 0.05f, 0.08f);
             _eventLogContainer.style.paddingLeft = _eventLogContainer.style.paddingRight = 8;
             _eventLogContainer.style.paddingTop = _eventLogContainer.style.paddingBottom = 6;
             _eventLogContainer.style.borderTopLeftRadius = _eventLogContainer.style.borderTopRightRadius =
-                _eventLogContainer.style.borderBottomLeftRadius = _eventLogContainer.style.borderBottomRightRadius = 4;
+                _eventLogContainer.style.borderBottomLeftRadius = _eventLogContainer.style.borderBottomRightRadius = 5;
+            _eventLogContainer.style.minHeight = 80;
             card.Add(_eventLogContainer);
-            _scrollView.Add(card);
+
+            return card;
         }
 
-        #endregion
-
-        #region Data Refresh & Event Handlers
-
-        private void RefreshData()
+        private void SetLogFilter(string filter)
         {
-            if (_window == null || !_isOpen) return;
-
-            _platformLabel.text = Application.platform.ToString();
-
-#if UNITY_ANDROID
-            bool isAuth = NativeSocial.IsAuthenticated;
-            _authStatusLabel.text = isAuth ? "Authenticated" : "Not Authenticated";
-            _authStatusLabel.style.color = isAuth ? new Color(0.3f, 0.85f, 0.45f) : new Color(1.0f, 0.7f, 0.2f);
-            _statusBanner.text = isAuth ? "GPGS SIGNED IN" : "GPGS NOT SIGNED IN";
-            _statusBanner.style.color = isAuth ? new Color(0.3f, 0.85f, 0.45f) : new Color(1.0f, 0.7f, 0.2f);
-            _statusSubtext.text = isAuth ? "Google Play Games is ready for achievements & leaderboards." : "Run Authenticate() to connect player account.";
-#elif UNITY_IOS
-            _authStatusLabel.text = "Game Center Available";
-            _authStatusLabel.style.color = new Color(0.3f, 0.85f, 0.45f);
-            _statusBanner.text = "IOS GAME CENTER";
-            _statusBanner.style.color = new Color(0.3f, 0.85f, 0.45f);
-            _statusSubtext.text = "Native iOS Game Center platform integration active.";
-#elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-            bool steam = NativeSocial.SteamReady;
-            _steamStatusLabel.text = steam ? "Ready" : "Waiting SteamAPI.Init";
-            _steamStatusLabel.style.color = steam ? new Color(0.3f, 0.85f, 0.45f) : new Color(0.95f, 0.35f, 0.35f);
-            _statusBanner.text = steam ? "STEAMWORKS READY" : "STEAM NOT READY";
-            _statusBanner.style.color = steam ? new Color(0.3f, 0.85f, 0.45f) : new Color(1.0f, 0.7f, 0.2f);
-            _statusSubtext.text = steam ? "Steam stat and achievement dispatch enabled." : "Ensure Steam is running and SteamAPI is initialized.";
-#else
-            _authStatusLabel.text = "Editor / Standalone Simulator";
-            _authStatusLabel.style.color = Color.gray;
-            _statusBanner.text = "NATIVE SOCIAL ACTIVE";
-            _statusBanner.style.color = new Color(0.00f, 0.85f, 0.95f);
-            _statusSubtext.text = "Simulated calls dispatched without errors.";
-#endif
+            _logFilter = filter;
+            RefreshEventLog();
         }
 
-        private void LogEvent(string msg)
+        private void AddLog(string msg, LogType type)
         {
-            var line = $"[{DateTime.Now:HH:mm:ss}] {msg}";
-            _eventHistory.Insert(0, line);
+            var item = new LogItem
+            {
+                Time = DateTime.Now.ToString("HH:mm:ss"),
+                Message = msg,
+                Type = type
+            };
+
+            _eventHistory.Insert(0, item);
             if (_eventHistory.Count > MaxHistoryCount) _eventHistory.RemoveAt(_eventHistory.Count - 1);
 
-            if (_eventLogContainer != null)
+            if (_isOpen) RefreshEventLog();
+        }
+
+        private void RefreshEventLog()
+        {
+            if (_eventLogContainer == null) return;
+            _eventLogContainer.Clear();
+
+            var filtered = _eventHistory.Where(item =>
             {
-                _eventLogContainer.Clear();
-                foreach (var ev in _eventHistory)
-                {
-                    var lbl = new Label(ev);
-                    lbl.style.fontSize = 10;
-                    lbl.style.color = new Color(0.7f, 0.85f, 0.95f);
-                    lbl.style.marginBottom = 2;
-                    _eventLogContainer.Add(lbl);
-                }
+                if (_logFilter == "Reports") return item.Message.IndexOf("Report", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (_logFilter == "Auth") return item.Message.IndexOf("Auth", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (_logFilter == "Errors") return item.Type == LogType.Error || item.Type == LogType.Warning || item.Message.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0 || item.Message.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0;
+                return true;
+            }).Take(20);
+
+            foreach (var item in filtered)
+            {
+                var row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.marginBottom = 2;
+
+                var timeLbl = new Label($"[{item.Time}] ");
+                timeLbl.style.fontSize = 9.5f;
+                timeLbl.style.color = ColorTextMuted;
+                row.Add(timeLbl);
+
+                var msgLbl = new Label(item.Message);
+                msgLbl.style.fontSize = 9.5f;
+                msgLbl.style.whiteSpace = WhiteSpace.Normal;
+                msgLbl.style.color = item.Type == LogType.Warning ? ColorAccentAmber :
+                                     item.Type == LogType.Error ? ColorAccentRed : Color.white;
+                row.Add(msgLbl);
+
+                _eventLogContainer.Add(row);
+            }
+
+            if (_eventLogContainer.childCount == 0)
+            {
+                var emptyLbl = new Label("No logged events.");
+                emptyLbl.style.fontSize = 9.5f;
+                emptyLbl.style.color = ColorTextMuted;
+                _eventLogContainer.Add(emptyLbl);
             }
         }
 
         #endregion
 
-        #region Helpers
+        #region Data Refresh & Diagnostics
+
+        private void RefreshDiagnostics()
+        {
+            if (_window == null) return;
+
+            bool isInit = NativeSocial.IsInitialized;
+            int androidCount = NativeSocial.AndroidMap != null ? NativeSocial.AndroidMap.Count : 0;
+            int iosCount = NativeSocial.IosMap != null ? NativeSocial.IosMap.Count : 0;
+            int steamCount = NativeSocial.SteamMap != null ? NativeSocial.SteamMap.Count : 0;
+
+            if (_platformLabel != null)
+                _platformLabel.text = $"{Application.platform} (v{Application.version})";
+
+            if (_mapsCountLabel != null)
+                _mapsCountLabel.text = $"Android: {androidCount} | iOS: {iosCount} | Steam: {steamCount}";
+
+            string userString = "None";
+            if (Social.localUser != null && !string.IsNullOrEmpty(Social.localUser.userName))
+            {
+                userString = $"{Social.localUser.userName} ({Social.localUser.id})";
+            }
+            if (_userLabel != null) _userLabel.text = userString;
+
+#if UNITY_ANDROID
+            bool isAuth = NativeSocial.IsAuthenticated;
+            if (_authStatusLabel != null)
+            {
+                _authStatusLabel.text = isAuth ? "Authenticated (GPGS)" : "Signed Out";
+                _authStatusLabel.style.color = isAuth ? ColorAccentGreen : ColorAccentAmber;
+            }
+            if (_statusBanner != null)
+            {
+                _statusBanner.text = isAuth ? "GOOGLE PLAY GAMES CONNECTED" : "GPGS SIGNED OUT";
+                _statusBanner.style.color = isAuth ? ColorAccentGreen : ColorAccentAmber;
+            }
+            if (_statusSubtext != null)
+            {
+                _statusSubtext.text = isAuth ? "Google Play Games Services signed in and ready." : "Click Authenticate to sign in with Play Games Services.";
+            }
+            if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
+
+#elif UNITY_IOS
+            bool isAuth = Social.localUser.authenticated;
+            if (_authStatusLabel != null)
+            {
+                _authStatusLabel.text = isAuth ? "Authenticated (Game Center)" : "Game Center Available";
+                _authStatusLabel.style.color = isAuth ? ColorAccentGreen : ColorAccentAmber;
+            }
+            if (_statusBanner != null)
+            {
+                _statusBanner.text = isAuth ? "GAME CENTER CONNECTED" : "GAME CENTER AVAILABLE";
+                _statusBanner.style.color = isAuth ? ColorAccentGreen : ColorAccentAmber;
+            }
+            if (_statusSubtext != null)
+            {
+                _statusSubtext.text = isAuth ? "Apple Game Center authenticated and active." : "Game Center ready for authentication.";
+            }
+            if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
+
+#elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
+            bool steam = NativeSocial.SteamReady;
+            if (_authStatusLabel != null)
+            {
+                _authStatusLabel.text = steam ? "Steamworks Initialized" : "Waiting SteamAPI";
+                _authStatusLabel.style.color = steam ? ColorAccentGreen : ColorAccentRed;
+            }
+            if (_statusBanner != null)
+            {
+                _statusBanner.text = steam ? "STEAMWORKS READY" : "STEAM NOT INITIALIZED";
+                _statusBanner.style.color = steam ? ColorAccentGreen : ColorAccentRed;
+            }
+            if (_statusSubtext != null)
+            {
+                _statusSubtext.text = steam ? "Steam stat & achievement dispatch active." : "Check Steam client and SteamAPI.Init().";
+            }
+            if (_floatingDot != null) _floatingDot.style.backgroundColor = steam ? ColorAccentGreen : ColorAccentRed;
+
+#else
+            if (_authStatusLabel != null)
+            {
+                _authStatusLabel.text = isInit ? "Active (Editor Simulation)" : "Not Initialized";
+                _authStatusLabel.style.color = isInit ? ColorAccentCyan : ColorAccentAmber;
+            }
+            if (_statusBanner != null)
+            {
+                _statusBanner.text = isInit ? "SIMULATION MODE ACTIVE" : "AWAITING INITIALIZATION";
+                _statusBanner.style.color = isInit ? ColorAccentCyan : ColorAccentAmber;
+            }
+            if (_statusSubtext != null)
+            {
+                _statusSubtext.text = isInit ? "Dispatches simulated events cleanly without errors." : "Call NativeSocial.Initialize() to register achievement maps.";
+            }
+            if (_floatingDot != null) _floatingDot.style.backgroundColor = isInit ? ColorAccentCyan : ColorAccentAmber;
+#endif
+        }
+
+        #endregion
+
+        #region Helpers & Element Factories
 
         public void SetOpen(bool open)
         {
@@ -642,7 +1362,9 @@ namespace Wagenheimer.NativeSocial.UI
 
             if (open)
             {
-                RefreshData();
+                RefreshDiagnostics();
+                RefreshAchievementsList();
+                RefreshEventLog();
             }
         }
 
@@ -650,8 +1372,8 @@ namespace Wagenheimer.NativeSocial.UI
         {
             var card = new VisualElement();
             var st = card.style;
-            st.backgroundColor = new Color(0.08f, 0.11f, 0.17f);
-            st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = new Color(0.12f, 0.22f, 0.30f);
+            st.backgroundColor = ColorCardBg;
+            st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = ColorCardBorder;
             st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1;
             st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 6;
             st.paddingLeft = st.paddingRight = 10;
@@ -659,9 +1381,9 @@ namespace Wagenheimer.NativeSocial.UI
             st.marginBottom = 10;
 
             var titleLbl = new Label(title);
-            titleLbl.style.fontSize = 11;
+            titleLbl.style.fontSize = 11.5f;
             titleLbl.style.unityFontStyleAndWeight = FontStyle.Bold;
-            titleLbl.style.color = new Color(0.20f, 0.80f, 0.90f);
+            titleLbl.style.color = ColorAccentCyan;
             titleLbl.style.marginBottom = 6;
             card.Add(titleLbl);
 
@@ -677,7 +1399,7 @@ namespace Wagenheimer.NativeSocial.UI
 
             var l = new Label(label);
             l.style.fontSize = 10;
-            l.style.color = new Color(0.6f, 0.7f, 0.8f);
+            l.style.color = ColorTextMuted;
             row.Add(l);
 
             var v = new Label(defaultValue);
@@ -697,7 +1419,7 @@ namespace Wagenheimer.NativeSocial.UI
             st.flexGrow = 1;
             st.fontSize = 10;
             st.unityFontStyleAndWeight = FontStyle.Bold;
-            st.backgroundColor = new Color(0.08f, 0.30f, 0.40f);
+            st.backgroundColor = new Color(0.08f, 0.22f, 0.32f);
             st.color = Color.white;
             st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 0;
             st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 4;
@@ -707,12 +1429,28 @@ namespace Wagenheimer.NativeSocial.UI
             return btn;
         }
 
+        private Button CreateCardButton(string text, Action onClick, Color? accent = null)
+        {
+            var btn = new Button(onClick) { text = text };
+            var st = btn.style;
+            st.fontSize = 9.5f;
+            st.unityFontStyleAndWeight = FontStyle.Bold;
+            st.backgroundColor = accent.HasValue ? new Color(accent.Value.r * 0.25f, accent.Value.g * 0.25f, accent.Value.b * 0.25f) : new Color(0.10f, 0.16f, 0.24f);
+            st.color = accent ?? Color.white;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 0;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 3;
+            st.paddingLeft = st.paddingRight = 6;
+            st.paddingTop = st.paddingBottom = 3;
+            st.marginRight = 4;
+            return btn;
+        }
+
         private Button CreateMiniButton(string text, Action onClick)
         {
             var btn = new Button(onClick) { text = text };
             var st = btn.style;
             st.fontSize = 10;
-            st.backgroundColor = new Color(0.12f, 0.22f, 0.32f);
+            st.backgroundColor = new Color(0.12f, 0.20f, 0.28f);
             st.color = Color.white;
             st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 0;
             st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 3;
@@ -720,6 +1458,36 @@ namespace Wagenheimer.NativeSocial.UI
             st.paddingTop = st.paddingBottom = 3;
             st.marginLeft = 3;
             return btn;
+        }
+
+        private VisualElement CreateFilterPill(string label, Action onClick, bool active)
+        {
+            var btn = new Button(onClick) { text = label };
+            var st = btn.style;
+            st.fontSize = 9.5f;
+            st.unityFontStyleAndWeight = active ? FontStyle.Bold : FontStyle.Normal;
+            st.backgroundColor = active ? new Color(0.00f, 0.40f, 0.55f) : new Color(0.08f, 0.12f, 0.18f);
+            st.color = active ? Color.white : ColorTextMuted;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 0;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 10;
+            st.paddingLeft = st.paddingRight = 8;
+            st.paddingTop = st.paddingBottom = 3;
+            st.marginRight = 4;
+            return btn;
+        }
+
+        private VisualElement CreateIdTag(string platform, string id)
+        {
+            var tag = new Label($"{platform}: {id}");
+            tag.style.fontSize = 8.5f;
+            tag.style.color = new Color(0.55f, 0.70f, 0.85f);
+            tag.style.backgroundColor = new Color(0.08f, 0.14f, 0.20f);
+            tag.style.paddingLeft = tag.style.paddingRight = 4;
+            tag.style.paddingTop = tag.style.paddingBottom = 1;
+            tag.style.borderTopLeftRadius = tag.style.borderTopRightRadius =
+                tag.style.borderBottomLeftRadius = tag.style.borderBottomRightRadius = 2;
+            tag.style.marginRight = 4;
+            return tag;
         }
 
         #endregion

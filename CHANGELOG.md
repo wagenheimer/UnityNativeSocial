@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-10-05
+- feat: Comprehensive modern UI Toolkit in-game `NativeSocialDebugOverlay` matching `UnityIAPHelper`, `UnityRateControl`, and `UnityBuildPipeline`:
+  - **Auto-Initialization**: Runs automatically via `[RuntimeInitializeOnLoadMethod]` in Development Builds and Editor (zero manual setup).
+  - **Floating Pill Button**: Draggable `"🎮 SOCIAL DBG"` button with live status LED dot (Green/Amber/Red).
+  - **Interactive Achievement Tester**: Dynamically renders card list of all achievements from `AchievementTierMap` and registered maps with live progress bars, `+1 Step`, `+5 Steps`, `✓ Unlock (100%)`, and `↺ Reset` buttons.
+  - **Search & Filters**: Live search by title, LocID or platform key, platform filter pills (All / Android / iOS / Steam), and completion state filters (All / In Progress / Completed).
+  - **Diagnostics & Quick Actions**: 1-click `Authenticate`, `Manual Auth (GPGS)`, `Show Achievements UI`, `Show Leaderboard UI`, and `Re-Sync Completed`.
+  - **Manual Command Dispatcher**: Test arbitrary LocIDs, step counters, and leaderboard score submissions.
+  - **Live Event Log**: Real-time event stream tracking all `Report`, `Authenticate`, and `SubmitScore` calls with timestamps and severity highlights.
+  - **Mobile Touch Zoom & Maximize**: `A-` / `A+` zoom controls and `⛶` maximize toggle, with automatic mobile scale and PlayerPrefs persistence.
+  - **PanelSettings Resource**: Bundled `NativeSocialDebugPanelSettings.asset` and `NativeSocialDebugTheme.tss` for error-free rendering on device builds.
+- feat: Added observability properties (`IsInitialized`, `AndroidMap`, `IosMap`, `SteamMap`, `AndroidLeaderboardMap`, `IosLeaderboardMap`) and event hooks (`OnReport`, `OnSubmitScore`, `OnAuthenticated`, `OnLog`) to `NativeSocial`.
+
 ## [1.21.2] - 2026-10-03
 - fix: Use the `UnityEngine.Social` facade for Game Center calls on iOS (`GameCenterPlatform` static methods no longer exist in Unity 6), fixing CS0120/CS1501 iOS build errors. `ShowLeaderboardUI` now opens the default Game Center leaderboards screen.
 
