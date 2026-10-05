@@ -236,13 +236,26 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             var map = FindMapAsset();
             if (map != null && map.Entries != null)
             {
-                var entry = map.Entries.FirstOrDefault(e => AchievementTierMap.LocId(e.TrophyNumber, e.Tier) == locId);
-                if (entry != null)
+                foreach (var entry in map.Entries)
                 {
-                    return ResolveAchievementTitle(entry);
+                    if (AchievementTierMap.LocId(entry.TrophyNumber, entry.Tier) == locId)
+                        return ResolveAchievementTitle(entry);
                 }
             }
             return locId;
+        }
+
+        /// <summary>Best-effort lookup of the project's AchievementTierMap (Resources first, then any loaded asset).</summary>
+        private static AchievementTierMap FindMapAsset()
+        {
+            var map = Resources.Load<AchievementTierMap>("Social/AchievementTierMap");
+            if (map != null) return map;
+
+            map = Resources.Load<AchievementTierMap>("AchievementTierMap");
+            if (map != null) return map;
+
+            var maps = Resources.FindObjectsOfTypeAll<AchievementTierMap>();
+            return maps != null && maps.Length > 0 ? maps[0] : null;
         }
 
         private void HandleOnSubmitScore(string locId, long score)

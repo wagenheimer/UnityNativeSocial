@@ -483,7 +483,7 @@ public class NativeSocialBootstrap : MonoBehaviour
                 // Fallback: Ping the file so the user can add it manually
                 OpenAssetOrFile(scriptPath);
                 EditorUtility.DisplayDialog("Manual Edit Needed",
-                    $"Opened '{Path.GetFileName(scriptPath)}'. Please add:\n\n#if UNITY_ANDROID || UNITY_IOS\nNativeSocial.Authenticate(success => { ... });\n#endif", "OK");
+                    $"Opened '{Path.GetFileName(scriptPath)}'. Please add:\n\n#if UNITY_ANDROID || UNITY_IOS\nNativeSocial.Authenticate(success => {{ ... }});\n#endif", "OK");
             }
             catch (Exception ex)
             {
