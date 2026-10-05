@@ -709,8 +709,9 @@ namespace Wagenheimer.NativeSocial.UI
             card.Add(topRow);
 
             // Search bar
-            var searchField = new TextField { placeholderText = "Search by title, LocID or platform key..." };
+            var searchField = new TextField("Search");
             searchField.style.marginBottom = 6;
+            searchField.labelElement.style.minWidth = 50;
             searchField.RegisterValueChangedCallback(evt =>
             {
                 _searchFilter = evt.newValue ?? "";
