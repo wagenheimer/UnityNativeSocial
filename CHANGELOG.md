@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.2] - 2026-10-05
+- fix(ui): `NativeSocialDebugOverlay` now defines the `FindMapAsset()` helper it calls, and `ResolveLocIdTitle` iterates the entries instead of comparing the `AchievementTierEntry` struct to null (`CS0103` / `CS0019`).
+- fix(audit): Escape the literal braces in the "Manual Edit Needed" dialog's interpolated string (`CS8635`).
+
 ## [1.23.1] - 2026-10-05
 - fix(ui): Added the missing `using System.Collections;` to `NativeSocialDebugOverlay` so `HideToastRoutine`'s non-generic `IEnumerator` return type resolves (fixes `CS0305: Using the generic type 'IEnumerator<T>' requires 1 type arguments`).
 
