@@ -88,6 +88,11 @@ namespace Wagenheimer.NativeSocial.UI
         private TextField _lbIdInput;
         private LongField _scoreInput;
 
+        // In-Game Achievement Unlock Toast
+        private VisualElement _toast;
+        private Label _toastTitle;
+        private Coroutine _toastCoroutine;
+
         // Log container
         private VisualElement _eventLogContainer;
         private readonly List<LogItem> _eventHistory = new List<LogItem>();
@@ -215,7 +220,27 @@ namespace Wagenheimer.NativeSocial.UI
         {
             UpdateSimProgress(locId, delta, current, total, completed);
             AddLog($"[REPORT] {locId} (+{delta}, {current}/{total}, comp={completed})", completed ? LogType.Log : LogType.Log);
+            if (completed)
+            {
+                string title = ResolveLocIdTitle(locId);
+                ShowUnlockToast(title);
+            }
             if (_isOpen) RefreshAchievementsList();
+        }
+
+        private string ResolveLocIdTitle(string locId)
+        {
+            if (string.IsNullOrEmpty(locId)) return "Achievement";
+            var map = FindMapAsset();
+            if (map != null && map.Entries != null)
+            {
+                var entry = map.Entries.FirstOrDefault(e => AchievementTierMap.LocId(e.TrophyNumber, e.Tier) == locId);
+                if (entry != null)
+                {
+                    return ResolveAchievementTitle(entry);
+                }
+            }
+            return locId;
         }
 
         private void HandleOnSubmitScore(string locId, long score)
@@ -282,10 +307,64 @@ namespace Wagenheimer.NativeSocial.UI
 
             BuildFloatingButton();
             BuildWindow();
+            BuildToast();
 
             SetOpen(false);
             RefreshDiagnostics();
             RefreshAchievementsList();
+        }
+
+        private void BuildToast()
+        {
+            _toast = new VisualElement();
+            _toast.name = "NativeSocialUnlockToast";
+            _toast.pickingMode = PickingMode.Ignore;
+            var st = _toast.style;
+            st.position = Position.Absolute;
+            st.top = 22;
+            st.alignSelf = Align.Center;
+            st.flexDirection = FlexDirection.Row;
+            st.alignItems = Align.Center;
+            st.backgroundColor = new Color(0.05f, 0.12f, 0.08f, 0.96f);
+            st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = ColorAccentGreen;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1.5f;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 8;
+            st.paddingLeft = 14;
+            st.paddingRight = 14;
+            st.paddingTop = 8;
+            st.paddingBottom = 8;
+            st.display = DisplayStyle.None;
+
+            var badge = new Label("ACHIEVEMENT UNLOCKED");
+            badge.style.fontSize = 10;
+            badge.style.unityFontStyleAndWeight = FontStyle.Bold;
+            badge.style.color = ColorAccentGreen;
+            badge.style.marginRight = 8;
+            _toast.Add(badge);
+
+            _toastTitle = new Label("");
+            _toastTitle.style.fontSize = 11;
+            _toastTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _toastTitle.style.color = Color.white;
+            _toast.Add(_toastTitle);
+
+            _root.Add(_toast);
+        }
+
+        public void ShowUnlockToast(string title)
+        {
+            if (_toast == null) return;
+            if (_toastCoroutine != null) StopCoroutine(_toastCoroutine);
+            _toastTitle.text = title;
+            _toast.style.display = DisplayStyle.Flex;
+            _toastCoroutine = StartCoroutine(HideToastRoutine());
+        }
+
+        private IEnumerator HideToastRoutine()
+        {
+            yield return new WaitForSecondsRealtime(4.0f);
+            if (_toast != null) _toast.style.display = DisplayStyle.None;
+            _toastCoroutine = null;
         }
 
         private float LoadZoom()

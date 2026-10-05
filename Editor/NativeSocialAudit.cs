@@ -59,12 +59,16 @@ namespace Wagenheimer.NativeSocial.Editor
         {
             public bool HasInitialize;
             public string InitializePath;
+            public bool HasAuthenticate;
+            public string AuthenticatePath;
             public bool HasReport;
             public string ReportPath;
             public bool HasLocId;
             public string LocIdPath;
             public bool HasSyncCompleted;
             public string SyncCompletedPath;
+            public bool HasShowAchievementsUI;
+            public string ShowAchievementsUIPath;
         }
 
         private static ProjectCodeAnalysis? _cachedAnalysis;
@@ -126,6 +130,12 @@ namespace Wagenheimer.NativeSocial.Editor
                     analysis.InitializePath = path;
                 }
 
+                if (!analysis.HasAuthenticate && (text.Contains("NativeSocial.Authenticate") || text.Contains("Social.localUser.Authenticate") || text.Contains("PlayGamesPlatform.Instance.Authenticate")))
+                {
+                    analysis.HasAuthenticate = true;
+                    analysis.AuthenticatePath = path;
+                }
+
                 if (!analysis.HasReport && text.Contains("NativeSocial.Report"))
                 {
                     analysis.HasReport = true;
@@ -144,7 +154,13 @@ namespace Wagenheimer.NativeSocial.Editor
                     analysis.SyncCompletedPath = path;
                 }
 
-                if (analysis.HasInitialize && analysis.HasReport && analysis.HasLocId && analysis.HasSyncCompleted)
+                if (!analysis.HasShowAchievementsUI && (text.Contains("NativeSocial.ShowAchievementsUI") || text.Contains("Social.ShowAchievementsUI")))
+                {
+                    analysis.HasShowAchievementsUI = true;
+                    analysis.ShowAchievementsUIPath = path;
+                }
+
+                if (analysis.HasInitialize && analysis.HasAuthenticate && analysis.HasReport && analysis.HasLocId && analysis.HasSyncCompleted && analysis.HasShowAchievementsUI)
                     break;
             }
 
@@ -188,7 +204,32 @@ namespace Wagenheimer.NativeSocial.Editor
                     whatIsThis: "NativeSocial requires a single Initialize() call before achievement progress can be reported.");
             }
 
-            // 2. Progress Reporting Calls
+            // 2. Mobile Player Authentication
+            if (code.HasAuthenticate)
+            {
+                Add(results, CategoryCommon, "Mobile Player Authentication", true,
+                    $"Player authentication detected in project code: '{code.AuthenticatePath}'.",
+                    null,
+                    whatIsThis: "NativeSocial.Authenticate(...) signs in with Google Play Games (Android) and Apple Game Center (iOS). Without authentication, mobile achievement progress is rejected.",
+                    assetPath: code.AuthenticatePath);
+            }
+            else
+            {
+                string targetScript = code.HasInitialize ? code.InitializePath : (hasBootstrapScript ? bootstrapPath : null);
+                string fixLabel = !string.IsNullOrEmpty(targetScript) ? $"Add Authenticate to {Path.GetFileName(targetScript)}" : null;
+                Action fixAction = !string.IsNullOrEmpty(targetScript) ? () => AddAuthenticateToScript(targetScript) : (Action)null;
+
+                Add(results, CategoryCommon, "Mobile Player Authentication", false,
+                    null,
+                    "No player authentication found: NativeSocial.Authenticate(...) must be called at startup on mobile (Android/iOS) so Game Center and Google Play Games can accept achievement updates.",
+                    "Call NativeSocial.Authenticate(success => { ... }) at startup after NativeSocial.Initialize.",
+                    fixLabel, fixAction,
+                    AuditSeverity.Warning,
+                    whatIsThis: "On iOS, Game Center rejects Social.ReportProgress with GKErrorNotAuthenticated until authenticated. On Android, Google Play Games requires sign-in before recording achievements.",
+                    assetPath: targetScript);
+            }
+
+            // 3. Progress Reporting Calls
             if (code.HasReport)
             {
                 Add(results, CategoryCommon, "Progress Reporting Calls", true,
@@ -208,7 +249,27 @@ namespace Wagenheimer.NativeSocial.Editor
                     whatIsThis: "NativeSocial.Report routes achievement unlocks to the active platform (Steam, Android, or iOS).");
             }
 
-            // 3. Check AchievementTierMap asset
+            // 4. In-Game Achievements UI Button (Best Practice)
+            if (code.HasShowAchievementsUI)
+            {
+                Add(results, CategoryCommon, "In-Game Achievements UI Button", true,
+                    $"NativeSocial.ShowAchievementsUI() call detected in project code: '{code.ShowAchievementsUIPath}'.",
+                    null,
+                    whatIsThis: "Opening the platform's achievements overlay allows players to view their progress, percentage and unlocked trophies directly from your UI.",
+                    assetPath: code.ShowAchievementsUIPath);
+            }
+            else
+            {
+                Add(results, CategoryCommon, "In-Game Achievements UI Button", false,
+                    null,
+                    "Best Practice: No call to NativeSocial.ShowAchievementsUI() detected. Adding a trophy button in your Settings/Options or Main Menu lets players view their Game Center / Google Play Games achievements on demand.",
+                    "Add a trophy/achievements button in your UI calling NativeSocial.ShowAchievementsUI().",
+                    null, null,
+                    AuditSeverity.Info,
+                    whatIsThis: "Apple Human Interface Guidelines and Google Play Games recommend providing an in-game entry point so players can inspect achievements anytime.");
+            }
+
+            // 5. Check AchievementTierMap asset
             var maps = FindAllAchievementTierMaps();
             if (maps.Count == 0)
             {
@@ -274,6 +335,9 @@ public class NativeSocialBootstrap : MonoBehaviour
     [Tooltip(""The AchievementTierMap containing all trophy definitions and platform IDs. If left empty, will try loading from Resources 'Social/AchievementTierMap' or finding any map asset."")]
     [SerializeField] private AchievementTierMap tierMap;
 
+    [Tooltip(""Whether to automatically authenticate with Google Play Games (Android) or Game Center (iOS) at startup."")]
+    [SerializeField] private bool autoAuthenticateOnMobile = true;
+
     [Tooltip(""Whether to mark this GameObject as persistent across scene loads."")]
     [SerializeField] private bool dontDestroyOnLoad = true;
 
@@ -306,6 +370,16 @@ public class NativeSocialBootstrap : MonoBehaviour
             NativeSocial.Initialize();
             Debug.LogWarning(""[NativeSocial] Initialized with empty maps because no AchievementTierMap was found."");
         }
+
+#if UNITY_ANDROID || UNITY_IOS
+        if (autoAuthenticateOnMobile)
+        {
+            NativeSocial.Authenticate(success =>
+            {
+                Debug.Log($""[NativeSocial] Mobile player authentication: "" + (success ? ""Success"" : ""Failed""));
+            });
+        }
+#endif
     }
 }
 ";
@@ -353,6 +427,69 @@ public class NativeSocialBootstrap : MonoBehaviour
             AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch { return Array.Empty<Type>(); } })
                 .FirstOrDefault(t => t.Name == "NativeSocialBootstrap" && typeof(MonoBehaviour).IsAssignableFrom(t));
+
+        internal static void AddAuthenticateToScript(string scriptPath)
+        {
+            if (string.IsNullOrEmpty(scriptPath) || !File.Exists(scriptPath))
+            {
+                EditorUtility.DisplayDialog("File Not Found", $"Could not find file at '{scriptPath}'.", "OK");
+                return;
+            }
+
+            try
+            {
+                string text = File.ReadAllText(scriptPath);
+                if (text.Contains("NativeSocial.Authenticate"))
+                {
+                    EditorUtility.DisplayDialog("Already Present", $"NativeSocial.Authenticate is already called in '{scriptPath}'.", "OK");
+                    return;
+                }
+
+                // Look for the end of the NativeSocial.Initialize call block
+                int initIndex = text.IndexOf("NativeSocial.Initialize", StringComparison.Ordinal);
+                if (initIndex >= 0)
+                {
+                    int semiColonIndex = text.IndexOf(';', initIndex);
+                    if (semiColonIndex >= 0)
+                    {
+                        // Determine indent from the line of Initialize
+                        int lineStart = text.LastIndexOf('\n', initIndex);
+                        string indent = "            ";
+                        if (lineStart >= 0)
+                        {
+                            int spaceCount = 0;
+                            for (int i = lineStart + 1; i < initIndex && (text[i] == ' ' || text[i] == '\t'); i++)
+                                spaceCount += (text[i] == '\t' ? 4 : 1);
+                            indent = new string(' ', spaceCount > 0 ? spaceCount : 12);
+                        }
+
+                        string codeToInsert = "\n\n" +
+                            indent + "#if UNITY_ANDROID || UNITY_IOS\n" +
+                            indent + "NativeSocial.Authenticate(success =>\n" +
+                            indent + "{\n" +
+                            indent + "    Debug.Log($\"[NativeSocial] Mobile player authentication: {(success ? \"Success\" : \"Failed\")}\");\n" +
+                            indent + "});\n" +
+                            indent + "#endif";
+
+                        text = text.Insert(semiColonIndex + 1, codeToInsert);
+                        File.WriteAllText(scriptPath, text);
+                        AssetDatabase.Refresh();
+                        Debug.Log($"[NativeSocial] Added NativeSocial.Authenticate to '{scriptPath}'.");
+                        EditorUtility.DisplayDialog("Authentication Added", $"Successfully added NativeSocial.Authenticate call to '{scriptPath}'.", "OK");
+                        return;
+                    }
+                }
+
+                // Fallback: Ping the file so the user can add it manually
+                OpenAssetOrFile(scriptPath);
+                EditorUtility.DisplayDialog("Manual Edit Needed",
+                    $"Opened '{Path.GetFileName(scriptPath)}'. Please add:\n\n#if UNITY_ANDROID || UNITY_IOS\nNativeSocial.Authenticate(success => { ... });\n#endif", "OK");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[NativeSocial] Failed to add Authenticate to script: {ex.Message}");
+            }
+        }
 
         #endregion
 
@@ -458,6 +595,17 @@ public class NativeSocialBootstrap : MonoBehaviour
                     whatIsThis: "Each achievement must have its Google Play Console ID configured in your AchievementTierMap so it can unlock on Android.",
                     assetPath: mapPath);
             }
+
+            var code = AnalyzeProjectCode();
+            Add(results, CategoryAndroid, "Google Play Games Player Sign-In", code.HasAuthenticate,
+                $"Sign-in detected in project code: '{code.AuthenticatePath}'.",
+                "No authentication call found: NativeSocial.Authenticate(...) must be called at startup so Google Play Games accepts achievement reports.",
+                "Call NativeSocial.Authenticate(success => { ... }) at startup after NativeSocial.Initialize.",
+                !string.IsNullOrEmpty(code.InitializePath) ? $"Add Authenticate to {Path.GetFileName(code.InitializePath)}" : null,
+                !string.IsNullOrEmpty(code.InitializePath) ? () => AddAuthenticateToScript(code.InitializePath) : (Action)null,
+                AuditSeverity.Warning,
+                whatIsThis: "Google Play Games ignores or fails achievement reporting if the local user is not signed in.",
+                assetPath: code.AuthenticatePath ?? code.InitializePath);
         }
 
         #endregion
@@ -488,6 +636,26 @@ public class NativeSocialBootstrap : MonoBehaviour
                     whatIsThis: "Each achievement must have its App Store Connect ID configured in your AchievementTierMap to unlock on iOS.",
                     assetPath: mapPath);
             }
+
+            var code = AnalyzeProjectCode();
+            Add(results, CategoryIOS, "Game Center Player Authentication", code.HasAuthenticate,
+                $"Authentication detected in project code: '{code.AuthenticatePath}'.",
+                "No authentication call found: NativeSocial.Authenticate(...) must be called at startup so Game Center accepts achievement updates and unlocks.",
+                "Call NativeSocial.Authenticate(success => { ... }) at startup after NativeSocial.Initialize.",
+                !string.IsNullOrEmpty(code.InitializePath) ? $"Add Authenticate to {Path.GetFileName(code.InitializePath)}" : null,
+                !string.IsNullOrEmpty(code.InitializePath) ? () => AddAuthenticateToScript(code.InitializePath) : (Action)null,
+                AuditSeverity.Warning,
+                whatIsThis: "On iOS, calling Social.ReportProgress without authenticating first fails with GKErrorNotAuthenticated, leaving achievements locked at 0%.",
+                assetPath: code.AuthenticatePath ?? code.InitializePath);
+
+            Add(results, CategoryIOS, "Game Center In-Game Achievements Button", code.HasShowAchievementsUI,
+                $"NativeSocial.ShowAchievementsUI() detected in project code: '{code.ShowAchievementsUIPath}'.",
+                "Best Practice: No call to NativeSocial.ShowAchievementsUI() detected. Apple HIG recommends placing a Game Center achievements button in your Settings/Options or Main Menu so players can view their achievements and progress directly.",
+                "Add a trophy/achievements button in your UI calling NativeSocial.ShowAchievementsUI().",
+                null, null,
+                AuditSeverity.Info,
+                whatIsThis: "ShowAchievementsUI() opens the native iOS Game Center modal overlay, showing all unlocked and locked achievements with progress bars.",
+                assetPath: code.ShowAchievementsUIPath);
         }
 
         #endregion

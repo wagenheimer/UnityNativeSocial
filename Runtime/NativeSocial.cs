@@ -90,6 +90,19 @@ namespace Wagenheimer.NativeSocial
             _iosLeaderboardMap = iosLeaderboardMap ?? new Dictionary<string, string>();
             _initialized = true;
 
+#if UNITY_IOS
+            try
+            {
+                // In Unity, GameKit completion banner is disabled by default. Enable it so Apple's native
+                // achievement popup drops down from the top of the screen when progress reaches 100%.
+                UnityEngine.SocialPlatforms.GameCenter.GameCenterPlatform.ShowDefaultAchievementCompletionBanner(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[NativeSocial] Failed to enable iOS achievement banner: {ex.Message}");
+            }
+#endif
+
             OnLog?.Invoke($"[NativeSocial] Initialized. Android={_androidMap.Count}, iOS={_iosMap.Count}, Steam={_steamMap.Count}");
         }
 
@@ -429,6 +442,12 @@ namespace Wagenheimer.NativeSocial
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS
+            try
+            {
+                UnityEngine.SocialPlatforms.GameCenter.GameCenterPlatform.ShowDefaultAchievementCompletionBanner(true);
+            }
+            catch {}
+
             // UnityEngine.SocialPlatforms.Social (the deprecated Unity Social API) is still the only
             // entry point Unity exposes for Game Center authentication — GameCenterPlatform itself has
             // no direct Authenticate method. This is an intentional, unavoidable use of the deprecated

@@ -85,6 +85,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 "Create and publish achievements under Play Console > Grow > Play Games Services > Configuration > Achievements."),
             (CategoryAndroid, "android_auth", "[In-Project] Sign-in called at startup (Authenticate / AuthenticateManually)",
                 "Call NativeSocial.Authenticate(...) on startup. If auto-sign-in fails, offer a manual sign-in button that calls NativeSocial.AuthenticateManually(...)."),
+            (CategoryAndroid, "android_ui", "[Best Practice] Achievements button in UI (ShowAchievementsUI)",
+                "Offer a trophy icon or button calling NativeSocial.ShowAchievementsUI() so players can open the Google Play Games achievements overlay."),
             (CategoryAndroid, "android_test", "[Testing] Tested sign-in and unlock on Android device / emulator",
                 "Test on a real device or Play Services emulator with a Google account added to the Play Console tester list."),
 
@@ -97,6 +99,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 "Create achievements under App Store Connect > Apps > Your App > Features > Game Center > Achievements."),
             (CategoryIOS, "ios_auth", "[In-Project] Game Center authentication called at startup",
                 "NativeSocial.Authenticate(...) signs into Game Center on iOS. SyncCompleted follows to restore offline achievements."),
+            (CategoryIOS, "ios_ui", "[Best Practice] Achievements button in UI (ShowAchievementsUI)",
+                "Apple HIG recommends placing a trophy/achievements button in Settings or Main Menu calling NativeSocial.ShowAchievementsUI() so players can see Game Center progress anytime."),
             (CategoryIOS, "ios_test", "[Testing] Tested on a real iOS device with Sandbox account",
                 "Test with an Apple ID configured in Settings > Game Center > Sandbox on an actual iOS device."),
 
@@ -362,6 +366,16 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         }
                         break;
 
+                    case "android_auth":
+                    case "ios_auth":
+                        if (code.HasAuthenticate) return $"✓ {Path.GetFileName(code.AuthenticatePath)}";
+                        break;
+
+                    case "android_ui":
+                    case "ios_ui":
+                        if (code.HasShowAchievementsUI) return $"✓ {Path.GetFileName(code.ShowAchievementsUIPath)}";
+                        break;
+
                     case "ios_ids":
                         if (primaryMap != null && primaryMap.Entries.Count > 0)
                         {
@@ -409,6 +423,16 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
                     case "setup_sync":
                         if (code.HasSyncCompleted) return code.SyncCompletedPath;
+                        break;
+
+                    case "android_auth":
+                    case "ios_auth":
+                        if (code.HasAuthenticate) return code.AuthenticatePath;
+                        break;
+
+                    case "android_ui":
+                    case "ios_ui":
+                        if (code.HasShowAchievementsUI) return code.ShowAchievementsUIPath;
                         break;
 
                     case "steam_ids":

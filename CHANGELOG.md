@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.3] - 2026-10-05
+- feat(ios): Enable GameKit default achievement completion banner (`ShowDefaultAchievementCompletionBanner(true)`) automatically on iOS during initialization and authentication.
+- feat(ui): Added in-game achievement unlock toast notification to `NativeSocialDebugOverlay` for visual feedback in Editor and builds.
+- feat(audit): Added Mobile Player Authentication audit check and 1-click `Add Authenticate to <file>` automatic script injector.
+- feat(audit): Added Best Practice check for In-Game Achievements UI Button (`ShowAchievementsUI()`) across Core, Android, and iOS audits and checklists.
+- feat(bootstrap): Updated `NativeSocialBootstrap` template with `autoAuthenticateOnMobile = true` to authenticate automatically at startup.
+
 ## [1.22.0] - 2026-10-05
 - feat: Comprehensive modern UI Toolkit in-game `NativeSocialDebugOverlay` matching `UnityIAPHelper`, `UnityRateControl`, and `UnityBuildPipeline`:
   - **Auto-Initialization**: Runs automatically via `[RuntimeInitializeOnLoadMethod]` in Development Builds and Editor (zero manual setup).
