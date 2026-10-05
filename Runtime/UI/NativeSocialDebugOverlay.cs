@@ -187,6 +187,7 @@ namespace Wagenheimer.NativeSocial.UI
             NativeSocial.OnReport += HandleOnReport;
             NativeSocial.OnSubmitScore += HandleOnSubmitScore;
             NativeSocial.OnAuthenticated += HandleOnAuthenticated;
+NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             NativeSocial.OnLog += HandleOnLog;
         }
 
@@ -257,6 +258,24 @@ namespace Wagenheimer.NativeSocial.UI
         private void HandleOnLog(string msg)
         {
             AddLog(msg, LogType.Log);
+        }
+
+        private void AutoSyncAfterAuth(bool success)
+        {
+            if (!success) return;
+            var completedKeys = _simProgressMap
+                .Where(p => p.Value.Completed)
+                .Select(p => p.Key)
+                .ToList();
+            if (completedKeys.Count > 0)
+            {
+                NativeSocial.SyncCompleted(completedKeys);
+                AddLog($"[AUTO-SYNC] Sent {completedKeys.Count} completed achievements after auth.", LogType.Log);
+            }
+            else
+            {
+                AddLog("[AUTO-SYNC] No completed achievements to sync.", LogType.Log);
+            }
         }
 
         private void UpdateSimProgress(string locId, int delta, int current, int total, bool completed)
@@ -756,6 +775,29 @@ namespace Wagenheimer.NativeSocial.UI
                 AddLog($"SyncCompleted dispatched for {completedKeys.Count} achievements.", LogType.Log);
             });
             row2.Add(syncBtn);
+
+            // New button: Check iOS Achievement IDs
+            var checkIosBtn = CreateActionButton("Check iOS IDs", () =>
+            {
+                AddLog("Starting iOS Achievement ID check...", LogType.Log);
+                // Load the AchievementTierMap asset (assumes it's placed under Resources)
+                var map = Resources.Load<AchievementTierMap>("AchievementTierMap");
+                if (map == null)
+                {
+                    AddLog("AchievementTierMap not found in Resources. Cannot perform check.", LogType.Error);
+                    return;
+                }
+                int checkedCount = 0;
+                foreach (var entry in map.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.AppleId)) continue;
+                    checkedCount++;
+                    // Report 0% progress to trigger logging (total must be >0)
+                    NativeSocial.Report(AchievementTierMap.LocId(entry.TrophyNumber, entry.Tier), 0, 0, 100, false);
+                }
+                AddLog($"iOS ID check completed for {checkedCount} entries. Check overlay logs for failures.", LogType.Log);
+            });
+            row2.Add(checkIosBtn);
 
             card.Add(row2);
             return card;

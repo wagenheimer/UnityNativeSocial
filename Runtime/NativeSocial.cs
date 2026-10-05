@@ -169,7 +169,7 @@ namespace Wagenheimer.NativeSocial
 #elif UNITY_IOS
             ReportIOS(locId, current, total, completed);
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-            ReportSteam(locId, delta, completed);
+            ReportSteam(locId, delta, current, completed);
 #endif
         }
 
@@ -211,8 +211,16 @@ namespace Wagenheimer.NativeSocial
 
             Social.ReportProgress(gcId, percent, success =>
             {
-                if (!success)
-                    Debug.LogWarning($"[NativeSocial] iOS ReportProgress failed for {gcId} ({percent:F1}%)");
+                if (success)
+                {
+                    OnLog?.Invoke($"[NativeSocial] iOS ReportProgress SUCCESS for '{gcId}' ({percent:F1}%)");
+                }
+                else
+                {
+                    string err = $"[NativeSocial] iOS ReportProgress FAILED for '{gcId}' ({percent:F1}%). Check if player is authenticated or if '{gcId}' matches the Game Center Achievement ID (vendorIdentifier in App Store Connect).";
+                    Debug.LogWarning(err);
+                    OnLog?.Invoke(err);
+                }
             });
         }
 #endif
