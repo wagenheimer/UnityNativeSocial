@@ -180,6 +180,8 @@ namespace Wagenheimer.NativeSocial
             ReportIOS(locId, current, total, completed);
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             ReportSteam(locId, delta, current, completed);
+#else
+            OnLog?.Invoke($"[NativeSocial] Report('{locId}') not dispatched: no platform backend on this build target ({Application.platform}). Editor/standalone without Steam keeps progress local only.");
 #endif
         }
 
@@ -190,14 +192,21 @@ namespace Wagenheimer.NativeSocial
         /// <param name="completed">If true, unlocks the achievement outright regardless of its counter state.</param>
         private static void ReportAndroid(string locId, int delta, bool completed)
         {
-            if (!IsAuthenticated || locId == null) return;
-            if (!_androidMap.TryGetValue(locId, out var gpgsId)) return;
+            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportAndroid skipped: locId is null."); return; }
+            if (!IsAuthenticated) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: GPGS is not authenticated yet (reports are dropped while signed out)."); return; }
+            if (!_androidMap.TryGetValue(locId, out var gpgsId)) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: no GPGS achievement id mapped for this LocID."); return; }
 
             if (delta > 0)
+            {
+                OnLog?.Invoke($"[NativeSocial] GPGS IncrementAchievement('{gpgsId}') by {delta} for '{locId}'. NOTE: the Play Games screen only shows a progress bar if '{gpgsId}' is an INCREMENTAL achievement (with steps) in the Play Console; a STANDARD achievement shows locked/unlocked only.");
                 PlayGamesPlatform.Instance.IncrementAchievement(gpgsId, delta, _ => { });
+            }
 
             if (completed)
+            {
+                OnLog?.Invoke($"[NativeSocial] GPGS UnlockAchievement('{gpgsId}') for '{locId}'.");
                 PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, _ => { });
+            }
         }
 #endif
 
@@ -209,9 +218,9 @@ namespace Wagenheimer.NativeSocial
         /// <param name="completed">If true, reports 100% regardless of <paramref name="current"/>/<paramref name="total"/>.</param>
         private static void ReportIOS(string locId, int current, int total, bool completed)
         {
-            if (locId == null) return;
-            if (!_iosMap.TryGetValue(locId, out var gcId)) return;
-            if (total <= 0) return;
+            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportIOS skipped: locId is null."); return; }
+            if (!_iosMap.TryGetValue(locId, out var gcId)) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: no Game Center achievement id mapped for this LocID."); return; }
+            if (total <= 0) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: total must be > 0 (got {total})."); return; }
 
             // Game Center achievements are percentage-based rather than increment-based,
             // so we derive a percent from current/total instead of using delta directly.
@@ -219,6 +228,7 @@ namespace Wagenheimer.NativeSocial
                 ? 100.0
                 : Math.Min((double)current / total * 100.0, 99.0);
 
+            OnLog?.Invoke($"[NativeSocial] iOS ReportProgress('{gcId}') {percent:F1}% for '{locId}'. Game Center shows this as a progress bar until it reaches 100%.");
             Social.ReportProgress(gcId, percent, success =>
             {
                 if (success)
@@ -243,8 +253,9 @@ namespace Wagenheimer.NativeSocial
         /// <param name="completed">If true, unlocks the Steam achievement (<see cref="SteamEntry.Achievement"/>) when <see cref="SteamEntry.Mode"/> is <see cref="SteamUnlockMode.ExplicitAchievement"/>. Ignored in <see cref="SteamUnlockMode.StatThreshold"/> (Steamworks unlocks it from the stat).</param>
         private static void ReportSteam(string locId, int delta, int current, bool completed)
         {
-            if (!SteamReady || locId == null) return;
-            if (!_steamMap.TryGetValue(locId, out var entry)) return;
+            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportSteam skipped: locId is null."); return; }
+            if (!SteamReady) { OnLog?.Invoke($"[NativeSocial] ReportSteam('{locId}') skipped: Steamworks is not ready yet."); return; }
+            if (!_steamMap.TryGetValue(locId, out var entry)) { OnLog?.Invoke($"[NativeSocial] ReportSteam('{locId}') skipped: no Steam stat/achievement mapped for this LocID."); return; }
 
             // Only call StoreStats() (see below) if we actually changed something this call.
             bool dirty = false;
@@ -285,7 +296,10 @@ namespace Wagenheimer.NativeSocial
             // SetStat/SetAchievement only update the local cache — StoreStats() is what
             // actually pushes the change to Steam, so only call it when something changed.
             if (dirty)
+            {
+                OnLog?.Invoke($"[NativeSocial] Steam stat/achievement updated for '{locId}' and flushed (StoreStats).");
                 SteamUserStats.StoreStats();
+            }
         }
 
         /// <summary>
@@ -397,14 +411,21 @@ namespace Wagenheimer.NativeSocial
         public static bool ShowAchievementsUI()
         {
 #if UNITY_ANDROID
-            if (!IsAuthenticated) return false;
+            if (!IsAuthenticated)
+            {
+                OnLog?.Invoke("[NativeSocial] ShowAchievementsUI skipped: not authenticated with GPGS (the native screen would be empty/locked).");
+                return false;
+            }
+            OnLog?.Invoke("[NativeSocial] Opening GPGS native achievements UI.");
             PlayGamesPlatform.Instance.ShowAchievementsUI();
             return true;
 #elif UNITY_IOS
+            OnLog?.Invoke("[NativeSocial] Opening Game Center native achievements UI.");
             Social.ShowAchievementsUI();
             return true;
 #else
             // Steam/standalone: no native UI exists to show, so the caller must provide its own.
+            OnLog?.Invoke("[NativeSocial] ShowAchievementsUI: no native achievements UI on this platform (Steam/standalone).");
             return false;
 #endif
         }
@@ -423,11 +444,24 @@ namespace Wagenheimer.NativeSocial
             OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}', score={score})");
 
 #if UNITY_ANDROID
-            if (IsAuthenticated && _androidLeaderboardMap.TryGetValue(locId, out var androidId))
+            if (!IsAuthenticated)
+            {
+                OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: not authenticated with GPGS.");
+                return;
+            }
+            if (_androidLeaderboardMap.TryGetValue(locId, out var androidId))
+            {
+                OnLog?.Invoke($"[NativeSocial] GPGS ReportScore('{androidId}') = {score}.");
                 PlayGamesPlatform.Instance.ReportScore(score, androidId, _ => { });
+            }
+            else OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: no GPGS leaderboard id mapped.");
 #elif UNITY_IOS
             if (_iosLeaderboardMap.TryGetValue(locId, out var iosId))
+            {
+                OnLog?.Invoke($"[NativeSocial] Game Center ReportScore('{iosId}') = {score}.");
                 Social.ReportScore(score, iosId, _ => { });
+            }
+            else OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: no Game Center leaderboard mapped.");
 #endif
         }
 
@@ -439,28 +473,32 @@ namespace Wagenheimer.NativeSocial
         public static bool ShowLeaderboardUI(string locId = null)
         {
 #if UNITY_ANDROID
-            if (!IsAuthenticated) return false;
+            if (!IsAuthenticated) { OnLog?.Invoke("[NativeSocial] ShowLeaderboardUI skipped: not authenticated with GPGS."); return false; }
             if (locId == null)
             {
+                OnLog?.Invoke("[NativeSocial] Opening GPGS all-leaderboards UI.");
                 PlayGamesPlatform.Instance.ShowLeaderboardUI();
                 return true;
             }
             if (_androidLeaderboardMap.TryGetValue(locId, out var androidId))
             {
+                OnLog?.Invoke($"[NativeSocial] Opening GPGS leaderboard UI for '{androidId}'.");
                 PlayGamesPlatform.Instance.ShowLeaderboardUI(androidId);
                 return true;
             }
+            OnLog?.Invoke($"[NativeSocial] ShowLeaderboardUI skipped: no GPGS leaderboard id mapped for '{locId}'.");
             return false;
 #elif UNITY_IOS
             if (locId != null && _iosLeaderboardMap.ContainsKey(locId))
             {
-                // Unity's Social API only exposes the default Game Center leaderboards screen
-                // (there is no per-leaderboard overload), so open that view for the mapped locId.
+                OnLog?.Invoke($"[NativeSocial] Opening Game Center leaderboards UI for '{locId}'.");
                 Social.ShowLeaderboardUI();
                 return true;
             }
+            OnLog?.Invoke($"[NativeSocial] ShowLeaderboardUI skipped: no Game Center leaderboard mapped for '{locId}'.");
             return false;
 #else
+            OnLog?.Invoke("[NativeSocial] ShowLeaderboardUI: no native leaderboard UI on this platform (Steam/standalone).");
             return false;
 #endif
         }

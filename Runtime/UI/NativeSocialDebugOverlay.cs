@@ -72,6 +72,15 @@ namespace Wagenheimer.NativeSocial.UI
         private Label _userLabel;
         private Label _mapsCountLabel;
 
+        // Quick Platform Action buttons (enabled/disabled from the live auth state)
+        private Button _authButton;
+        private Button _manualAuthButton;
+        private Button _showAchievementsButton;
+        private Button _showLeaderboardButton;
+        private Button _resyncButton;
+        private Button _checkIosButton;
+        private Button _testIosButton;
+
         // Filter and Search for Achievements
         private string _searchFilter = "";
         private string _platformFilter = "All"; // All, Android, iOS, Steam
@@ -740,6 +749,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
 
             var row1 = new VisualElement();
             row1.style.flexDirection = FlexDirection.Row;
+            row1.style.flexWrap = Wrap.Wrap;
             row1.style.marginBottom = 6;
 
             var authBtn = CreateActionButton("Authenticate", () =>
@@ -751,6 +761,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                     RefreshDiagnostics();
                 });
             });
+            _authButton = authBtn;
             row1.Add(authBtn);
 
             var manualAuthBtn = CreateActionButton("Manual Auth (GPGS)", () =>
@@ -762,17 +773,20 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                     RefreshDiagnostics();
                 });
             });
+            _manualAuthButton = manualAuthBtn;
             row1.Add(manualAuthBtn);
             card.Add(row1);
 
             var row2 = new VisualElement();
             row2.style.flexDirection = FlexDirection.Row;
+            row2.style.flexWrap = Wrap.Wrap;
 
             var showAchBtn = CreateActionButton("Show Achievements UI", () =>
             {
                 var shown = NativeSocial.ShowAchievementsUI();
                 AddLog($"ShowAchievementsUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
             });
+            _showAchievementsButton = showAchBtn;
             row2.Add(showAchBtn);
 
             var showLbBtn = CreateActionButton("Show Leaderboard UI", () =>
@@ -780,6 +794,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 var shown = NativeSocial.ShowLeaderboardUI();
                 AddLog($"ShowLeaderboardUI() -> {shown}", shown ? LogType.Log : LogType.Warning);
             });
+            _showLeaderboardButton = showLbBtn;
             row2.Add(showLbBtn);
 
             var syncBtn = CreateActionButton("Re-Sync Completed", () =>
@@ -788,17 +803,19 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 NativeSocial.SyncCompleted(completedKeys);
                 AddLog($"SyncCompleted dispatched for {completedKeys.Count} achievements.", LogType.Log);
             });
+            _resyncButton = syncBtn;
             row2.Add(syncBtn);
 
             // New button: Check iOS Achievement IDs
             var checkIosBtn = CreateActionButton("Check iOS IDs", () =>
             {
                 AddLog("Starting iOS Achievement ID check...", LogType.Log);
-                // Load the AchievementTierMap asset (assumes it's placed under Resources)
-                var map = Resources.Load<AchievementTierMap>("AchievementTierMap");
+                // Use the same best-effort lookup as the explorer (Resources, then any loaded asset) so this
+                // does not report "not found" for a map the list is already showing.
+                var map = FindMapAsset();
                 if (map == null)
                 {
-                    AddLog("AchievementTierMap not found in Resources. Cannot perform check.", LogType.Error);
+                    AddLog("No AchievementTierMap asset found in the project. Cannot perform check.", LogType.Error);
                     return;
                 }
                 int checkedCount = 0;
@@ -811,16 +828,17 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 }
                 AddLog($"iOS ID check completed for {checkedCount} entries. Check overlay logs for failures.", LogType.Log);
             });
+            _checkIosButton = checkIosBtn;
             row2.Add(checkIosBtn);
 
             // New button: Test iOS Report
             var testIosBtn = CreateActionButton("Test iOS Report", () =>
             {
                 AddLog("Starting iOS Report test...", LogType.Log);
-                var map = Resources.Load<AchievementTierMap>("AchievementTierMap");
+                var map = FindMapAsset();
                 if (map == null)
                 {
-                    AddLog("AchievementTierMap not found in Resources. Cannot perform test.", LogType.Error);
+                    AddLog("No AchievementTierMap asset found in the project. Cannot perform test.", LogType.Error);
                     return;
                 }
                 int tested = 0;
@@ -833,6 +851,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 }
                 AddLog($"iOS Report test completed for {tested} entries. Check overlay logs for results.", LogType.Log);
             });
+            _testIosButton = testIosBtn;
             row2.Add(testIosBtn);
 
             card.Add(row2);
@@ -845,7 +864,8 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
 
         private VisualElement BuildAchievementsSection()
         {
-            var card = CreateCard("Achievements Explorer & Interactive Tester");
+            // Collapsible (collapsed by default) so the Live Event Log stays visible while testing buttons.
+            var card = CreateCollapsibleCard("Achievements Explorer & Interactive Tester", false, out var content);
 
             // Header info row
             var topRow = new VisualElement();
@@ -863,7 +883,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             _achCountBadge.style.fontSize = 9.5f;
             _achCountBadge.style.color = ColorAccentCyan;
             topRow.Add(_achCountBadge);
-            card.Add(topRow);
+            content.Add(topRow);
 
             // Search bar
             var searchField = new TextField("Search");
@@ -874,11 +894,12 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 _searchFilter = evt.newValue ?? "";
                 RefreshAchievementsList();
             });
-            card.Add(searchField);
+            content.Add(searchField);
 
             // Filter pills
             var filterRow = new VisualElement();
             filterRow.style.flexDirection = FlexDirection.Row;
+            filterRow.style.flexWrap = Wrap.Wrap;
             filterRow.style.marginBottom = 8;
 
             filterRow.Add(CreateFilterPill("All", () => SetPlatformFilter("All"), _platformFilter == "All"));
@@ -891,10 +912,10 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
 
             filterRow.Add(CreateFilterPill("Done", () => SetStatusFilter("Completed"), _statusFilter == "Completed"));
             filterRow.Add(CreateFilterPill("In Progress", () => SetStatusFilter("InProgress"), _statusFilter == "InProgress"));
-            card.Add(filterRow);
+            content.Add(filterRow);
 
             _achievementsContainer = new VisualElement();
-            card.Add(_achievementsContainer);
+            content.Add(_achievementsContainer);
 
             return card;
         }
@@ -1446,6 +1467,9 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             }
             if (_userLabel != null) _userLabel.text = userString;
 
+            // Unified auth state for the action buttons (filled per platform below).
+            bool authenticated;
+
 #if UNITY_ANDROID
             bool isAuth = NativeSocial.IsAuthenticated;
             if (_authStatusLabel != null)
@@ -1462,6 +1486,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             {
                 _statusSubtext.text = isAuth ? "Google Play Games Services signed in and ready." : "Click Authenticate to sign in with Play Games Services.";
             }
+            authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
 
 #elif UNITY_IOS
@@ -1480,6 +1505,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             {
                 _statusSubtext.text = isAuth ? "Apple Game Center authenticated and active." : "Game Center ready for authentication.";
             }
+            authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
 
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
@@ -1498,6 +1524,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             {
                 _statusSubtext.text = steam ? "Steam stat & achievement dispatch active." : "Check Steam client and SteamAPI.Init().";
             }
+            authenticated = steam;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = steam ? ColorAccentGreen : ColorAccentRed;
 
 #else
@@ -1515,8 +1542,28 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             {
                 _statusSubtext.text = isInit ? "Dispatches simulated events cleanly without errors." : "Call NativeSocial.Initialize() to register achievement maps.";
             }
+            authenticated = false; // no native sign-in in the editor: keep the platform actions disabled
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isInit ? ColorAccentCyan : ColorAccentAmber;
 #endif
+
+            UpdateActionButtons(authenticated);
+        }
+
+        /// <summary>
+        /// Keeps the Quick Platform Actions in sync with the live auth state: sign-in buttons are only useful
+        /// while signed out; every platform action (achievements/leaderboard UI, re-sync, ID checks) only does
+        /// anything once signed in, so it is disabled until then.
+        /// </summary>
+        private void UpdateActionButtons(bool authenticated)
+        {
+            _authButton?.SetEnabled(!authenticated);
+            _manualAuthButton?.SetEnabled(!authenticated);
+
+            _showAchievementsButton?.SetEnabled(authenticated);
+            _showLeaderboardButton?.SetEnabled(authenticated);
+            _resyncButton?.SetEnabled(authenticated);
+            _checkIosButton?.SetEnabled(authenticated);
+            _testIosButton?.SetEnabled(authenticated);
         }
 
         #endregion
@@ -1561,6 +1608,35 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             return card;
         }
 
+        /// <summary>
+        /// A card whose body is inside a Foldout. Returns the card; <paramref name="content"/> is where the
+        /// caller adds its children. Collapsed by default so it does not push later sections (like the log) off-screen.
+        /// </summary>
+        private VisualElement CreateCollapsibleCard(string title, bool defaultOpen, out VisualElement content)
+        {
+            var card = new VisualElement();
+            var st = card.style;
+            st.backgroundColor = ColorCardBg;
+            st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = ColorCardBorder;
+            st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 1;
+            st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 6;
+            st.paddingLeft = st.paddingRight = 10;
+            st.paddingTop = st.paddingBottom = 8;
+            st.marginBottom = 10;
+
+            var foldout = new Foldout { text = title, value = defaultOpen };
+            foldout.style.fontSize = 11.5f;
+            foldout.style.unityFontStyleAndWeight = FontStyle.Bold;
+            foldout.style.color = ColorAccentCyan;
+            card.Add(foldout);
+
+            content = new VisualElement();
+            content.style.marginTop = 6;
+            foldout.Add(content);
+
+            return card;
+        }
+
         private Label CreateRow(VisualElement parent, string label, string defaultValue)
         {
             var row = new VisualElement();
@@ -1590,14 +1666,30 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             st.flexGrow = 1;
             st.fontSize = 10;
             st.unityFontStyleAndWeight = FontStyle.Bold;
-            st.backgroundColor = new Color(0.08f, 0.22f, 0.32f);
+            var baseBg = new Color(0.08f, 0.22f, 0.32f);
+            st.backgroundColor = baseBg;
             st.color = Color.white;
             st.borderLeftWidth = st.borderRightWidth = st.borderTopWidth = st.borderBottomWidth = 0;
             st.borderTopLeftRadius = st.borderTopRightRadius = st.borderBottomLeftRadius = st.borderBottomRightRadius = 4;
             st.paddingLeft = st.paddingRight = 8;
             st.paddingTop = st.paddingBottom = 6;
             st.marginLeft = st.marginRight = 3;
+            AddPressFeedback(btn, baseBg);
             return btn;
+        }
+
+        /// <summary>Briefly brightens a button on click, so a tap is visibly registered even before its log line lands.</summary>
+        private static void AddPressFeedback(Button btn, Color baseBg)
+        {
+            var pressed = new Color(
+                Mathf.Min(1f, baseBg.r + 0.30f),
+                Mathf.Min(1f, baseBg.g + 0.38f),
+                Mathf.Min(1f, baseBg.b + 0.38f));
+            btn.clicked += () =>
+            {
+                btn.style.backgroundColor = pressed;
+                btn.schedule.Execute(() => btn.style.backgroundColor = baseBg).ExecuteLater(260);
+            };
         }
 
         private Button CreateCardButton(string text, Action onClick, Color? accent = null)
