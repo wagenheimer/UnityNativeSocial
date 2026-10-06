@@ -290,14 +290,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
                 _hubBusy = true;
                 signIn.SetEnabled(false);
-                signIn.text = "Signing in…";
+                NativeSocialUIStyle.ApplyIconText(signIn, "Signing in…");
                 AppDeployHubClient.RunThen(AppDeployHubClient.LoginAsync(email.value, typedPassword), response =>
                 {
                     _hubBusy = false;
                     if (!response.Ok)
                     {
                         signIn.SetEnabled(true);
-                        signIn.text = "🔑 Sign in";
+                        NativeSocialUIStyle.ApplyIconText(signIn, "🔑 Sign in");
                         EditorUtility.DisplayDialog("Sign in failed", response.Error ?? "Unknown error.", "OK");
                         return;
                     }
@@ -513,7 +513,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             _hubBusy = true;
             sendBtn.SetEnabled(false);
-            sendBtn.text = "Sending…";
+            NativeSocialUIStyle.ApplyIconText(sendBtn, "Sending…");
             SendNext(targets, 0, json, sendBtn, new List<string>());
         }
 
@@ -524,7 +524,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             {
                 _hubBusy = false;
                 sendBtn.SetEnabled(true);
-                sendBtn.text = "☁ Send to AppDeployHub";
+                NativeSocialUIStyle.ApplyIconText(sendBtn, "☁ Send to AppDeployHub");
                 EditorUtility.DisplayDialog("AppDeployHub", string.Join("\n\n", report) +
                     "\n\nNothing is pushed to a store unless you ticked the push boxes: open the app's Achievements page in AppDeployHub to review and push.", "OK");
                 return;
@@ -555,7 +555,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         HandleHubError(response);
                         _hubBusy = false;
                         sendBtn.SetEnabled(true);
-                        sendBtn.text = "☁ Send to AppDeployHub";
+                        NativeSocialUIStyle.ApplyIconText(sendBtn, "☁ Send to AppDeployHub");
                         return;
                     }
                     SendNext(targets, index + 1, json, sendBtn, report);
@@ -575,7 +575,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             _hubBusy = true;
             pullBtn.SetEnabled(false);
-            pullBtn.text = "Pulling…";
+            NativeSocialUIStyle.ApplyIconText(pullBtn, "Pulling…");
             PullNext(targets, 0, pullBtn, 0, 0);
         }
 
@@ -585,7 +585,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             {
                 _hubBusy = false;
                 pullBtn.SetEnabled(true);
-                pullBtn.text = "⬇ Pull from AppDeployHub";
+                NativeSocialUIStyle.ApplyIconText(pullBtn, "⬇ Pull from AppDeployHub");
 
                 if (gpUpdated > 0 || gcUpdated > 0)
                 {
@@ -746,7 +746,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         HandleHubError(response);
                         _hubBusy = false;
                         pullBtn.SetEnabled(true);
-                        pullBtn.text = "⬇ Pull from AppDeployHub";
+                        NativeSocialUIStyle.ApplyIconText(pullBtn, "⬇ Pull from AppDeployHub");
                         return;
                     }
 

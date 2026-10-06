@@ -258,9 +258,9 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 var fileName = Path.GetFileName(assetPath);
                 var openBtn = new Button(() => NativeSocialAudit.OpenAssetOrFile(assetPath))
                 {
-                    text = "↗ " + fileName,
                     tooltip = "Open " + assetPath + " in editor or IDE."
                 };
+                NativeSocialUIStyle.ApplyIconText(openBtn, "↗ " + fileName);
                 openBtn.AddToClassList("ns-btn-secondary");
                 openBtn.style.fontSize = 10;
                 openBtn.style.paddingLeft = 6;

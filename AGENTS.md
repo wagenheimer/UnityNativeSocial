@@ -107,3 +107,6 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   `Runtime/Wagenheimer.NativeSocial.asmdef`'s `references` — always verify an API actually exists in a REAL
   resolved copy (`Library/PackageCache/com.rlabrecque.steamworks.net@*` /
   `com.google.play.games@*`) before assuming a symbol name; these APIs change across SDK versions.
+
+## UI Toolkit: leading-icon text
+Never put an emoji/symbol inline at the start of a `Button.text` (or a lone `Label`) — on Windows the fallback glyph draws wider than it measures and the following text overlaps the icon. Use `NativeSocialUIStyle.ApplyIconText(button, text)` (and `CreateIconLabel` for title labels) so the icon gets its own reserved box.

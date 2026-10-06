@@ -170,8 +170,9 @@ namespace Wagenheimer.NativeSocial.Editor
                 {
                     _currentTab = tabValue;
                     RebuildUI();
-                })
-                { text = $"{icon} {title}" };
+                });
+
+                NativeSocialUIStyle.ApplyIconText(button, $"{icon} {title}");
 
                 button.AddToClassList("ns-tab-btn");
                 if (_currentTab == tab) button.AddToClassList("ns-tab-btn-active");

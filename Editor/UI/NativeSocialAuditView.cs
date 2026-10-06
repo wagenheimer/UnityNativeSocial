@@ -295,16 +295,17 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
         private static Button CreateCopyButton(string label, string tooltip, Func<string> getText, string copiedLabel = "✓ Copied")
         {
-            var button = new Button { text = label, tooltip = tooltip };
+            var button = new Button { tooltip = tooltip };
+            NativeSocialUIStyle.ApplyIconText(button, label);
             button.AddToClassList("ns-btn-secondary");
             button.clicked += () =>
             {
                 var text = getText();
-                button.text = string.IsNullOrEmpty(text) ? "Run the audit first" : copiedLabel;
+                NativeSocialUIStyle.ApplyIconText(button, string.IsNullOrEmpty(text) ? "Run the audit first" : copiedLabel);
                 if (!string.IsNullOrEmpty(text))
                     GUIUtility.systemCopyBuffer = text;
 
-                button.schedule.Execute(() => button.text = label).ExecuteLater(CopiedFeedbackMs);
+                button.schedule.Execute(() => NativeSocialUIStyle.ApplyIconText(button, label)).ExecuteLater(CopiedFeedbackMs);
             };
             return button;
         }
