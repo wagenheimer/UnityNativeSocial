@@ -68,6 +68,15 @@ namespace Wagenheimer.NativeSocial
         public static event Action<string> OnLog;
 
         /// <summary>
+        /// Editor-only hook, set by the package's Editor assembly via <c>[InitializeOnLoadMethod]</c>.
+        /// When set, rewrites Apple Game Center IDs stored in App Store Connect's UUID format into the
+        /// achievement's vendorIdentifier (<see cref="AchievementTierMap.LocId"/>) in the given
+        /// <see cref="AchievementTierMap"/> and persists the change; returns how many entries changed.
+        /// Null in player builds, where callers should fall back to an in-memory fix only.
+        /// </summary>
+        public static Func<AchievementTierMap, int> PersistentAppleIdFixer;
+
+        /// <summary>
         /// Register achievement ID maps per platform.
         /// Must be called once at game startup before any Report/Auth calls.
         /// </summary>
