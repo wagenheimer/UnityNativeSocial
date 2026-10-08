@@ -501,8 +501,9 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             _floatingBtn.pickingMode = PickingMode.Position;
             var st = _floatingBtn.style;
             st.position = Position.Absolute;
+            // Shared debug-button layout (no overlaps): bottom-right column 18/62/106 = Console, Rate, Social.
             st.right = 18;
-            st.bottom = 60;
+            st.bottom = 106;
             st.height = 34;
             st.backgroundColor = new Color(0.06f, 0.12f, 0.18f, 0.94f);
             st.borderLeftColor = st.borderRightColor = st.borderTopColor = st.borderBottomColor = new Color(0.00f, 0.75f, 0.85f, 0.85f);
