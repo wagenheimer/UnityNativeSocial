@@ -850,6 +850,16 @@ public class NativeSocialBootstrap : MonoBehaviour
             if (duplicates.Count > 0) problems.Add($"duplicated id(s): {string.Join(", ", duplicates)}");
             if (padded.Count > 0) problems.Add($"id(s) with leading/trailing spaces: {string.Join(", ", padded.Select(p => "'" + p + "'"))}");
 
+            var guidLike = appleIds.Count(id => Guid.TryParse(id, out _));
+            if (guidLike == appleIds.Count)
+            {
+                Add(results, CategoryIOS, "Game Center achievement ids are the in-game identifiers (not App Store Connect resource ids)", false, string.Empty,
+                    $"All {appleIds.Count} Apple ids are UUIDs. Game Center reports progress by the achievement's \"Achievement ID\" (its vendor identifier, e.g. Trophy1_1), not by App Store Connect's internal UUID. If these came from a sync, they may be the internal ids and iOS achievements would not unlock.",
+                    "In App Store Connect > Game Center > Achievements, open one achievement and compare its Achievement ID with the value in the map; they must be identical (case sensitive). If App Store Connect shows the UUID as the Achievement ID, this is fine.",
+                    failSeverity: AuditSeverity.Warning,
+                    whatIsThis: "Apple has two identifiers per achievement: an internal UUID used by the App Store Connect API and the Achievement ID you type, which is the only one the game can report with.");
+            }
+
             Add(results, CategoryIOS, "Game Center achievement ids are unique and clean", problems.Count == 0,
                 $"{appleIds.Count} ids, all unique.",
                 string.Join("; ", problems) + ".",

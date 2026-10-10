@@ -576,13 +576,41 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             _hubBusy = true;
             pullBtn.SetEnabled(false);
             NativeSocialUIStyle.ApplyIconText(pullBtn, "Pulling…");
-            PullNext(targets, 0, pullBtn, 0, 0);
+            PullNext(targets, 0, pullBtn, new PullState());
         }
 
-        private void PullNext(List<AppDeployHubClient.AppSummary> targets, int index, Button pullBtn, int gpUpdated, int gcUpdated)
+        /// <summary>
+        /// What a pull from several apps changed. Counts distinct achievements (an entry that two apps both write is one change, not two) and
+        /// remembers which app set what, so two apps returning DIFFERENT ids for the same achievement are reported instead of the last silently winning.
+        /// </summary>
+        private sealed class PullState
+        {
+            private readonly Dictionary<string, (string App, string Id)> _google = new Dictionary<string, (string, string)>();
+            private readonly HashSet<string> _apple = new HashSet<string>();
+            private readonly List<string> _conflicts = new List<string>();
+
+            public int GoogleChanged => _google.Count;
+            public int AppleChanged => _apple.Count;
+            public IReadOnlyList<string> Conflicts => _conflicts;
+
+            public void RecordGoogle(string key, string app, string id)
+            {
+                if (_google.TryGetValue(key, out var previous) && previous.Id != id)
+                    _conflicts.Add($"{key}: '{previous.App}' says {previous.Id}, '{app}' says {id} (the last one was kept)");
+
+                _google[key] = (app, id);
+            }
+
+            public void RecordApple(string key) => _apple.Add(key);
+        }
+
+        private void PullNext(List<AppDeployHubClient.AppSummary> targets, int index, Button pullBtn, PullState state)
         {
             if (index >= targets.Count)
             {
+                var gpUpdated = state.GoogleChanged;
+                var gcUpdated = state.AppleChanged;
+
                 _hubBusy = false;
                 pullBtn.SetEnabled(true);
                 NativeSocialUIStyle.ApplyIconText(pullBtn, "⬇ Pull from AppDeployHub");
@@ -623,6 +651,14 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 string summaryMsg = $"Sincronização concluída com sucesso de {targets.Count} app(s)!\n\n" +
                                    $"• Google Play IDs (Android): {totalEntries - missingGp}/{totalEntries} (novos: +{gpUpdated})\n" +
                                    $"• Apple IDs (iOS/macOS): {totalEntries - missingGc}/{totalEntries} (novos: +{gcUpdated})";
+
+                if (state.Conflicts.Count > 0)
+                {
+                    var conflictText = string.Join("\n", state.Conflicts.Take(5));
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ {state.Conflicts.Count} conquista(s) receberam IDs do Google Play DIFERENTES de apps diferentes; o último app venceu:\n{conflictText}");
+                    summaryMsg += $"\n\n⚠ {state.Conflicts.Count} conquista(s) vieram com IDs do Google Play diferentes em apps diferentes (o ÚLTIMO app foi mantido). " +
+                                  "Selecione apenas o app da loja que este mapa deve usar (ex.: o Android pago OU o gratuito), pois o mapa tem um ID por conquista.";
+                }
 
                 if (missingGp > 0)
                 {
@@ -696,7 +732,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                         {
                                             Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
                                             entry.GooglePlayId = match.googlePlayId;
-                                            gpUpdated++;
+                                            state.RecordGoogle(key, target.name, match.googlePlayId);
                                             changed = true;
                                         }
                                     }
@@ -708,7 +744,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                         {
                                             Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
                                             entry.AppleId = match.appleId;
-                                            gcUpdated++;
+                                            state.RecordApple(key);
                                             changed = true;
                                         }
                                     }
@@ -735,7 +771,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                             Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> Nenhum achievement retornado pelo AppDeployHub para '{target.name}'.");
                         }
 
-                        PullNext(targets, index + 1, pullBtn, gpUpdated, gcUpdated);
+                        PullNext(targets, index + 1, pullBtn, state);
                         return;
                     }
 
@@ -750,7 +786,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         return;
                     }
 
-                    PullNext(targets, index + 1, pullBtn, gpUpdated, gcUpdated);
+                    PullNext(targets, index + 1, pullBtn, state);
                 });
         }
 
