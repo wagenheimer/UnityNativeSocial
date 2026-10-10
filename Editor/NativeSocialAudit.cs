@@ -665,11 +665,8 @@ public class NativeSocialBootstrap : MonoBehaviour
                 guid == null
                     ? "The plugin's Android setup was never run: there is no GooglePlayGamesManifest.androidlib, so the build has no application id and Google sign-in will fail."
                     : $"The application id in {guid} is empty or invalid (value '{appId}'). Google sign-in will fail on the device.",
-                "Run Window > Google Play Games > Setup > Android setup, paste the Android resources from Play Console (Play Games Services > Publishing > Get resources) and press Setup.",
-                "Select manifest", () =>
-                {
-                    if (guid != null) Selection.activeObject = AssetDatabase.LoadMainAssetAtPath(guid);
-                },
+                "Open Tools > Wagenheimer > Native Social > Set Google Play Games Application ID (works from any build target; Google's own \"Android setup\" window is greyed out unless the active build target is Android).",
+                "Set Application ID...", GpgsAppIdSetup.OpenWindow,
                 AuditSeverity.Fail,
                 whatIsThis: "Android's Google Play Games SDK needs your game's application id (a 12-digit project number) in the manifest to talk to Play Games Services. It is written by the plugin's Android setup window.");
         }
