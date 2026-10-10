@@ -512,6 +512,84 @@ namespace Wagenheimer.NativeSocial
         /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
         /// </summary>
         /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
+        /// <summary>Always visible in logcat / the Console (not only through <see cref="OnLog"/>): authentication failures are otherwise silent.</summary>
+        private static void LogAuthenticationResult(string service, bool success, string detail)
+        {
+            if (success)
+                Debug.Log($"[NativeSocial] {service} sign-in succeeded.");
+            else
+                Debug.LogWarning($"[NativeSocial] {service} sign-in FAILED: {detail}");
+        }
+
+        /// <summary>A short, actionable explanation for a Google Play Games <c>SignInStatus</c> name.</summary>
+        internal static string DescribeSignInFailure(string statusName)
+        {
+            switch (statusName)
+            {
+                case "DeveloperError":
+                    return "The app is not set up for this build: check the Play Games application id in the manifest, that the package name matches the one in Play Console, " +
+                           "and that the SHA-1 of the key that SIGNED this build (debug, upload or app-signing key) is registered under Play Games Services > Credentials.";
+                case "UiSignInRequired":
+                case "NotAuthenticated":
+                    return "No Play Games player is signed in on this device. Call NativeSocial.AuthenticateManually() to show the sign-in UI.";
+                case "NetworkError":
+                    return "No connection to Google Play Games.";
+                case "Canceled":
+                    return "The player cancelled the sign-in.";
+                case "AlreadyInProgress":
+                    return "A sign-in was already running.";
+                case "InternalError":
+                case "Failed":
+                    return "Google Play Games reported an internal error. The usual causes are a missing or wrong application id, a SHA-1 that is not registered, " +
+                           "or the device account not being a tester while the game is unpublished.";
+                default:
+                    return "See the Google Play Games documentation for this status.";
+            }
+        }
+
+#if UNITY_ANDROID
+        private const string GpgsAppIdMetaData = "com.google.android.gms.games.APP_ID";
+        private const int PackageManagerGetMetaData = 128;
+        private const int MinimumAppIdDigits = 8;
+
+        /// <summary>
+        /// Null when the built app has a plausible Google Play Games application id in its manifest meta-data; otherwise what is wrong.
+        /// The id is written there by "Window > Google Play Games > Setup > Android setup"; an empty value is the most common reason sign-in never works.
+        /// </summary>
+        internal static string FindAndroidAppIdProblem()
+        {
+#if UNITY_EDITOR
+            return null;
+#else
+            try
+            {
+                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var packageManager = activity.Call<AndroidJavaObject>("getPackageManager"))
+                using (var info = packageManager.Call<AndroidJavaObject>("getApplicationInfo", activity.Call<string>("getPackageName"), PackageManagerGetMetaData))
+                using (var metaData = info.Get<AndroidJavaObject>("metaData"))
+                {
+                    var value = metaData != null ? metaData.Call<string>("getString", GpgsAppIdMetaData) : null;
+                    if (string.IsNullOrEmpty(value))
+                        return $"the manifest has no '{GpgsAppIdMetaData}' meta-data. Run Window > Google Play Games > Setup > Android setup and rebuild.";
+
+                    var digits = 0;
+                    foreach (var c in value)
+                        if (char.IsDigit(c)) digits++;
+
+                    return digits >= MinimumAppIdDigits
+                        ? null
+                        : $"the Play Games application id in the manifest is empty or invalid (value '{value}'). Run Window > Google Play Games > Setup > Android setup with your Play Console resources and rebuild.";
+                }
+            }
+            catch (Exception ex)
+            {
+                return "could not read the manifest meta-data: " + ex.Message;
+            }
+#endif
+        }
+#endif
+
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS
@@ -525,19 +603,26 @@ namespace Wagenheimer.NativeSocial
             // entry point Unity exposes for Game Center authentication — GameCenterPlatform itself has
             // no direct Authenticate method. This is an intentional, unavoidable use of the deprecated
             // API surface, not leftover code to "clean up"; removing it would break iOS auth entirely.
-            Social.localUser.Authenticate(success =>
+            Social.localUser.Authenticate((success, error) =>
             {
                 OnAuthenticated?.Invoke(success);
                 OnLog?.Invoke($"[NativeSocial] Game Center Authenticate: {success}");
+                LogAuthenticationResult("Game Center", success, success ? "signed in" : (string.IsNullOrEmpty(error) ? "no error message from Game Center (is Game Center enabled in Settings and the app set up in App Store Connect?)" : error));
                 callback?.Invoke(success);
             });
 #elif UNITY_ANDROID
+            // Say it loudly BEFORE signing in: a missing Play Games application id makes every call fail without a useful message.
+            var configurationProblem = FindAndroidAppIdProblem();
+            if (configurationProblem != null)
+                Debug.LogError("[NativeSocial] Google Play Games is not configured: " + configurationProblem);
+
             PlayGamesPlatform.Instance.Authenticate(status =>
             {
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
                 OnAuthenticated?.Invoke(success);
                 OnLog?.Invoke($"[NativeSocial] GPGS Authenticate: {status} ({success})");
+                LogAuthenticationResult("Google Play Games", success, success ? "signed in" : $"{status}. {DescribeSignInFailure(status.ToString())}");
                 callback?.Invoke(success);
             });
 #else
