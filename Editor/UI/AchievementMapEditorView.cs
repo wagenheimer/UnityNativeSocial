@@ -479,7 +479,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             var shared = chosen.Where(a => StoreRoles.GoogleRank(a.platform) == StoreRoles.SharedSource && StoreRoles.AppleRank(a.platform) == StoreRoles.SharedSource).ToList();
             if (shared.Count > 0 && chosen.Count > shared.Count)
-                yield return (string.Join(", ", shared.Select(a => a.name)) + " is a Universal / Cross-platform record: AppDeployHub keeps rows for BOTH stores on it. On a pull the Android / iOS record always wins over it; on a Send it also receives rows for the other store.", false);
+                yield return (string.Join(", ", shared.Select(a => a.name)) + " is a Cross-platform record: AppDeployHub keeps rows for BOTH stores on it. On a pull the Android / iOS record always wins over it; on a Send it also receives rows for the other store.", false);
 
             var dedicatedGoogle = chosen.Count(a => StoreRoles.GoogleRank(a.platform) == StoreRoles.DedicatedSource);
             var dedicatedApple = chosen.Count(a => StoreRoles.AppleRank(a.platform) == StoreRoles.DedicatedSource);
@@ -527,7 +527,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                           "This creates or updates the achievement rows in AppDeployHub (matched by key). Nothing is deleted.";
             var sharedTargets = targets.Where(t => StoreRoles.GoogleRank(t.platform) == StoreRoles.SharedSource && StoreRoles.AppleRank(t.platform) == StoreRoles.SharedSource).ToList();
             if (sharedTargets.Count > 0 && targets.Count > sharedTargets.Count)
-                message += "\n\n" + string.Join(", ", sharedTargets.Select(t => t.name)) + " is a Universal / Cross-platform record, so it receives BOTH Google Play and Game Center rows, " +
+                message += "\n\n" + string.Join(", ", sharedTargets.Select(t => t.name)) + " is a Cross-platform record, so it receives BOTH Google Play and Game Center rows, " +
                            "not only the store of its own platform.";
             if (_pushGooglePlay || _pushGameCenter)
                 message += "\n\n⚠ You also chose to QUEUE A STORE PUSH: " +
@@ -695,8 +695,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                         {
                             bool isAndroid = string.Equals(target.platform, "Android", StringComparison.OrdinalIgnoreCase);
                             bool isApple = string.Equals(target.platform, "iOS", StringComparison.OrdinalIgnoreCase) ||
-                                           string.Equals(target.platform, "MacOS", StringComparison.OrdinalIgnoreCase);
-                            bool isUniversal = string.Equals(target.platform, "Universal", StringComparison.OrdinalIgnoreCase);
+                                           string.Equals(target.platform, "MacOS", StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(target.platform, "Universal", StringComparison.OrdinalIgnoreCase);
 
                             int hubTotal = file.entries.Length;
                             int hubWithGp = file.entries.Count(e => !string.IsNullOrEmpty(e.googlePlayId));
@@ -708,13 +708,13 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
                             Debug.Log($"<color=#2196F3><b>[NativeSocial]</b></color> AppDeployHub retornou {hubTotal} achievements para <b>{target.name}</b> [{target.platform}]:\n{platformDetail}");
 
-                            if ((isAndroid || isUniversal) && hubWithGp < hubTotal)
+                            if (!isApple && hubWithGp < hubTotal)
                             {
                                 var missingOnHub = file.entries.Where(e => string.IsNullOrEmpty(e.googlePlayId)).Select(e => e.key);
                                 Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> No AppDeployHub (app '{target.name}'), {hubTotal - hubWithGp} achievements estão sem ExternalId do Google Play no servidor:\n" +
                                                  string.Join(", ", missingOnHub));
                             }
-                            if ((isApple || isUniversal) && hubWithGc < hubTotal)
+                            if (!isAndroid && hubWithGc < hubTotal)
                             {
                                 var missingOnHub = file.entries.Where(e => string.IsNullOrEmpty(e.appleId)).Select(e => e.key);
                                 Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> No AppDeployHub (app '{target.name}'), {hubTotal - hubWithGc} achievements estão sem ExternalId da Apple (Game Center) no servidor:\n" +
@@ -734,7 +734,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                     bool changed = false;
 
                                     // Each store reads only the records that really are a source for it (StoreRoles), and a dedicated
-                                    // record (Android / iOS) always beats a shared one (Universal), whatever the order of the selection.
+                                    // record (Android / iOS / Universal) always beats a shared one (Cross-platform), whatever the order of the selection.
                                     if (state.OwnsGoogle(key, target.name, match.googlePlayId, StoreRoles.GoogleRank(target.platform)) &&
                                         entry.GooglePlayId != match.googlePlayId)
                                     {

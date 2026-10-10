@@ -33,7 +33,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         internal static string StoreLabel(AppDeployHubClient.AppSummary app) => (app.platform ?? string.Empty) switch
         {
             "Android" => "Google Play",
-            "iOS" or "MacOS" => "Apple Game Center",
+            "iOS" or "MacOS" or "Universal" => "Apple Game Center",
             _ => "Google Play + Apple Game Center"
         };
 

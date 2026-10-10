@@ -5,9 +5,9 @@ using System.Linq;
 namespace Wagenheimer.NativeSocial.Editor
 {
     /// <summary>
-    /// Which store each AppDeployHub app record is the source of. The hub writes Google Play rows to every record that is not iOS/macOS and Game Center
+    /// Which store each AppDeployHub app record is the source of. The hub writes Google Play rows only to Android and Cross-platform records and Game Center
     /// rows to every record that is not Android (see its AchievementImportService), so an Android or iOS record is the <i>dedicated</i> source of its store
-    /// and a Universal / Cross-platform record is only a <i>shared</i> one that also holds rows for the other store.
+    /// (iPhone / iPad / Mac) and Universal are Game Center only; only a Cross-platform record is a <i>shared</i> one that also holds rows for the other store.
     /// </summary>
     internal static class StoreRoles
     {
@@ -18,13 +18,13 @@ namespace Wagenheimer.NativeSocial.Editor
         internal static int GoogleRank(string platform) => (platform ?? string.Empty) switch
         {
             "Android" => DedicatedSource,
-            "iOS" or "MacOS" => NotASource,
+            "iOS" or "MacOS" or "Universal" => NotASource,
             _ => SharedSource
         };
 
         internal static int AppleRank(string platform) => (platform ?? string.Empty) switch
         {
-            "iOS" or "MacOS" => DedicatedSource,
+            "iOS" or "MacOS" or "Universal" => DedicatedSource,
             "Android" => NotASource,
             _ => SharedSource
         };

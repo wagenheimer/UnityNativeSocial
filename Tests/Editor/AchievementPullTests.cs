@@ -15,7 +15,7 @@ namespace Wagenheimer.NativeSocial.Tests
         [TestCase("Android", 2, 0)]
         [TestCase("iOS", 0, 2)]
         [TestCase("MacOS", 0, 2)]
-        [TestCase("Universal", 1, 1)]
+        [TestCase("Universal", 0, 2)]
         [TestCase("CrossPlatform", 1, 1)]
         public void Ranks_FollowWhatTheHubWritesPerPlatform(string platform, int google, int apple)
         {
@@ -27,12 +27,12 @@ namespace Wagenheimer.NativeSocial.Tests
         public void ADedicatedRecord_AlwaysWinsOverASharedOne_WhateverTheOrder()
         {
             var sharedFirst = Pull();
-            Assert.IsTrue(sharedFirst.OwnsGoogle("Trophy1_1", "Universal", "SHARED", StoreRoles.SharedSource));
+            Assert.IsTrue(sharedFirst.OwnsGoogle("Trophy1_1", "CrossPlatform", "SHARED", StoreRoles.SharedSource));
             Assert.IsTrue(sharedFirst.OwnsGoogle("Trophy1_1", "Android", "ANDROID", StoreRoles.DedicatedSource));
 
             var dedicatedFirst = Pull();
             Assert.IsTrue(dedicatedFirst.OwnsGoogle("Trophy1_1", "Android", "ANDROID", StoreRoles.DedicatedSource));
-            Assert.IsFalse(dedicatedFirst.OwnsGoogle("Trophy1_1", "Universal", "SHARED", StoreRoles.SharedSource));
+            Assert.IsFalse(dedicatedFirst.OwnsGoogle("Trophy1_1", "CrossPlatform", "SHARED", StoreRoles.SharedSource));
             Assert.IsEmpty(dedicatedFirst.Conflicts, "A shared record losing to a dedicated one is expected, not a conflict.");
         }
 
