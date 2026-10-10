@@ -74,7 +74,7 @@ namespace Wagenheimer.NativeSocial.Editor
         }
 
         /// <summary>Runs the plugin's own setup step with the given application id. Returns false (with a message) when it could not.</summary>
-        internal static bool Apply(string appId, out string message)
+        internal static bool Apply(string appId, string webClientId, out string message)
         {
             appId = (appId ?? string.Empty).Trim();
             if (appId.Length < 5 || !appId.All(char.IsDigit))
@@ -95,7 +95,9 @@ namespace Wagenheimer.NativeSocial.Editor
                 return false;
             }
 
-            var ok = (bool)method.Invoke(null, new object[] { null, appId, null });
+            // A blank Web client id passes null so a value already stored by the plugin is kept.
+            var clientId = string.IsNullOrWhiteSpace(webClientId) ? null : webClientId.Trim();
+            var ok = (bool)method.Invoke(null, new object[] { clientId, appId, null });
             message = ok
                 ? $"Application id {appId} saved and the Android manifest regenerated."
                 : "The plugin's setup reported a problem (see its dialog / the Console). A common one is a missing Android SDK: install Android Build Support in Unity Hub.";
@@ -106,43 +108,150 @@ namespace Wagenheimer.NativeSocial.Editor
     internal sealed class GpgsAppIdWindow : EditorWindow
     {
         private string _appId = string.Empty;
+        private string _webClientId = string.Empty;
+        private string _resourcesXml = string.Empty;
+        private Vector2 _xmlScroll;
+        private Vector2 _scroll;
         private string _status;
         private MessageType _statusType = MessageType.None;
 
         internal static void Open()
         {
-            var window = GetWindow<GpgsAppIdWindow>(true, "Google Play Games Application ID");
-            window.minSize = new Vector2(520, 260);
+            var window = GetWindow<GpgsAppIdWindow>(true, "Google Play Games Setup");
+            window.minSize = new Vector2(560, 520);
             window._appId = GpgsAppIdSetup.SuggestAppId() ?? string.Empty;
             window.Show();
         }
 
         private void OnGUI()
         {
+            _scroll = EditorGUILayout.BeginScrollView(_scroll);
+
             EditorGUILayout.HelpBox(
-                "Google's \"Android setup\" window is only enabled while the active build target is Android. This does the same step from any platform: " +
-                "it stores the application id and regenerates the Play Games Android manifest, so Android sign-in can work.",
+                "Google's \"Android setup\" window is only enabled while the active build target is Android. This does the same job from any platform: " +
+                "it stores the application id (and the optional Web client id) and regenerates the Play Games Android manifest, so Android sign-in can work. " +
+                "You do NOT need Google's constants class (GPGSIds): NativeSocial reads the achievement ids from the Tier Map.",
                 MessageType.Info);
 
+            DrawAppId();
+            DrawResourcesXml();
+            DrawWebClientId();
+            DrawApply();
+
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawAppId()
+        {
             EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField("1. Application ID", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("The numeric project number in Play Console > Play Games Services > Configuration (for example 123456789012).", EditorStyles.wordWrappedMiniLabel);
             _appId = EditorGUILayout.TextField("Application ID", _appId);
 
             var suggestion = GpgsAppIdSetup.SuggestAppId();
-            if (!string.IsNullOrEmpty(suggestion))
+            if (!string.IsNullOrEmpty(suggestion) && suggestion != _appId)
             {
-                EditorGUILayout.HelpBox(
-                    $"Your achievement ids contain the application id {suggestion}. Confirm it in Play Console (Play Games Services > Configuration) before applying.",
-                    MessageType.None);
+                EditorGUILayout.HelpBox($"Your achievement ids contain the application id {suggestion}. Confirm it in Play Console before applying.", MessageType.None);
                 if (GUILayout.Button("Use " + suggestion, GUILayout.Width(180)))
                     _appId = suggestion;
             }
+        }
 
+        private void DrawResourcesXml()
+        {
             EditorGUILayout.Space(8);
-            if (GUILayout.Button("Apply", GUILayout.Height(28)))
+            EditorGUILayout.LabelField("2. Android resources XML (optional, but it verifies everything)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "Play Console > Play Games Services > Configuration > Achievements > Get resources > Android. Paste it here to fill the application id and to check " +
+                "the package name and every achievement id of the Tier Map against what Google really has. Nothing is generated from it.",
+                EditorStyles.wordWrappedMiniLabel);
+
+            _xmlScroll = EditorGUILayout.BeginScrollView(_xmlScroll, GUILayout.Height(110));
+            _resourcesXml = EditorGUILayout.TextArea(_resourcesXml, GUILayout.ExpandHeight(true));
+            EditorGUILayout.EndScrollView();
+
+            if (string.IsNullOrWhiteSpace(_resourcesXml)) return;
+
+            if (!GpgsResourcesXml.TryParse(_resourcesXml, out var xml, out var error))
             {
-                var ok = GpgsAppIdSetup.Apply(_appId, out var message);
-                _status = message;
-                _statusType = ok ? MessageType.Info : MessageType.Warning;
+                EditorGUILayout.HelpBox(error, MessageType.Warning);
+                return;
+            }
+
+            if (xml.AppId != _appId && GUILayout.Button($"Use application id {xml.AppId} from the XML", GUILayout.Width(280)))
+                _appId = xml.AppId;
+
+            EditorGUILayout.HelpBox($"XML: application id {xml.AppId}, package {xml.PackageName ?? "(none)"}, {xml.Achievements.Count} achievements.", MessageType.None);
+
+            if (xml.AppId != _appId)
+                EditorGUILayout.HelpBox($"The XML application id ({xml.AppId}) is different from the one above ({_appId}).", MessageType.Warning);
+
+            var androidId = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android);
+            if (!string.IsNullOrEmpty(xml.PackageName) && xml.PackageName != androidId)
+                EditorGUILayout.HelpBox(
+                    $"The XML was configured for package {xml.PackageName} but Player Settings > Android uses {androidId}. Google Play Games only signs in builds with the package registered in Play Console.",
+                    MessageType.Warning);
+
+            DrawMapComparison(xml);
+        }
+
+        private static void DrawMapComparison(GpgsResourcesXml xml)
+        {
+            var mapIds = AssetDatabase.FindAssets("t:AchievementTierMap")
+                .Select(g => AssetDatabase.LoadAssetAtPath<AchievementTierMap>(AssetDatabase.GUIDToAssetPath(g)))
+                .Where(m => m != null)
+                .SelectMany(m => m.Entries.Select(e => e.GooglePlayId))
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToList();
+
+            if (mapIds.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No Google Play ids in a Tier Map to compare with yet.", MessageType.None);
+                return;
+            }
+
+            var missing = xml.MissingFromXml(mapIds);
+            var unused = xml.UnusedByMap(mapIds);
+            if (missing.Count == 0 && unused.Count == 0)
+            {
+                EditorGUILayout.HelpBox($"All {mapIds.Count} Google Play ids of the Tier Map match the XML.", MessageType.Info);
+                return;
+            }
+
+            if (missing.Count > 0)
+                EditorGUILayout.HelpBox($"{missing.Count} id(s) in the Tier Map are NOT in the XML (they will not unlock on Android):\n" + string.Join("\n", missing.Take(8)) +
+                                        (missing.Count > 8 ? "\n..." : string.Empty), MessageType.Warning);
+            if (unused.Count > 0)
+                EditorGUILayout.HelpBox($"{unused.Count} achievement(s) in Play Console are not used by the Tier Map:\n" + string.Join("\n", unused.Take(8)) +
+                                        (unused.Count > 8 ? "\n..." : string.Empty), MessageType.None);
+        }
+
+        private void DrawWebClientId()
+        {
+            EditorGUILayout.Space(8);
+            EditorGUILayout.LabelField("3. Web client ID (optional)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "Only needed to read the player's ID token or a server auth code (NativeSocial.GetServerAuthCode) for your own backend. Not required for sign-in or achievements; leave it empty otherwise. " +
+                "Create an OAuth client of type \"Web application\" in the same Google Cloud project and paste its id.",
+                EditorStyles.wordWrappedMiniLabel);
+            _webClientId = EditorGUILayout.TextField("Client ID", _webClientId);
+
+            var problem = GpgsResourcesXml.ValidateWebClientId(_webClientId, _appId);
+            if (problem != null)
+                EditorGUILayout.HelpBox(problem, MessageType.Warning);
+        }
+
+        private void DrawApply()
+        {
+            EditorGUILayout.Space(10);
+            using (new EditorGUI.DisabledScope(GpgsResourcesXml.ValidateWebClientId(_webClientId, _appId) != null))
+            {
+                if (GUILayout.Button("Apply", GUILayout.Height(28)))
+                {
+                    var ok = GpgsAppIdSetup.Apply(_appId, _webClientId, out var message);
+                    _status = message;
+                    _statusType = ok ? MessageType.Info : MessageType.Warning;
+                }
             }
 
             if (!string.IsNullOrEmpty(_status))
