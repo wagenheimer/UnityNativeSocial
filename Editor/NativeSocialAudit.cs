@@ -605,7 +605,10 @@ public class NativeSocialBootstrap : MonoBehaviour
             }
 
             if (gpgsFound)
+            {
                 AuditGpgsApplicationId(results);
+                AuditGpgsAdvanced(results);
+            }
 
             var maps = FindAllAchievementTierMaps();
             if (maps.Count > 0)
@@ -671,8 +674,179 @@ public class NativeSocialBootstrap : MonoBehaviour
                 whatIsThis: "Android's Google Play Games SDK needs your game's application id (a 12-digit project number) in the manifest to talk to Play Games Services. It is written by the plugin's Android setup window.");
         }
 
+        #region Google Play Games - deeper checks
+
+        private const string GpgsSettingsFile = "ProjectSettings/GooglePlayGameSettings.txt";
+
+        /// <summary>The application id written in the generated Play Games manifest, or null (also returns the manifest path, or null when there is none).</summary>
+        private static string ReadGpgsManifestAppId(out string manifestPath)
+        {
+            manifestPath = AssetDatabase.FindAssets("AndroidManifest t:DefaultAsset")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .FirstOrDefault(p => p.Contains("GooglePlayGamesManifest.androidlib"));
+
+            if (manifestPath == null || !File.Exists(manifestPath)) return null;
+
+            var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(manifestPath), GpgsAppIdPattern);
+            if (!match.Success) return null;
+
+            var digits = new string(match.Groups[1].Value.Where(char.IsDigit).ToArray());
+            return digits.Length >= 8 ? digits : null;
+        }
+
+        /// <summary>Reads "key=value" lines of the plugin's own settings file (ProjectSettings/GooglePlayGameSettings.txt).</summary>
+        private static string ReadGpgsSetting(string key)
+        {
+            if (!File.Exists(GpgsSettingsFile)) return null;
+
+            foreach (var line in File.ReadAllLines(GpgsSettingsFile))
+            {
+                var separator = line.IndexOf('=');
+                if (separator > 0 && line.Substring(0, separator).Trim() == key)
+                    return line.Substring(separator + 1).Trim();
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Deeper Android checks. The plugin cannot tell you most of these; each one maps to a way sign-in or unlocking fails on a device while
+        /// everything "looks fine" in the Editor.
+        /// </summary>
+        private static void AuditGpgsAdvanced(List<AuditResult> results)
+        {
+            var manifestAppId = ReadGpgsManifestAppId(out var manifestPath);
+            var googleIds = FindAllAchievementTierMaps()
+                .SelectMany(m => m.Entries)
+                .Select(e => e.GooglePlayId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToList();
+
+            AuditGoogleIdsConsistency(results, googleIds, manifestAppId);
+            AuditGpgsPluginSetup(results, manifestAppId, manifestPath);
+            AuditAndroidSigning(results);
+            AuditAndroidShrinking(results);
+        }
+
+        /// <summary>The ids copied from Play Console must be well formed, unique and belong to the same Play Games app as the manifest application id.</summary>
+        private static void AuditGoogleIdsConsistency(List<AuditResult> results, List<string> googleIds, string manifestAppId)
+        {
+            if (googleIds.Count == 0) return;
+
+            var decoded = googleIds.Select(GpgsAppIdSetup.DecodeAppId).ToList();
+            var malformed = googleIds.Where((id, i) => decoded[i] == null).Take(3).ToList();
+            var duplicates = googleIds.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).Take(3).ToList();
+            var apps = decoded.Where(d => d != null).Distinct().ToList();
+
+            var problems = new List<string>();
+            if (malformed.Count > 0) problems.Add($"{malformed.Count}+ id(s) are not valid Play Games ids (e.g. '{malformed[0]}'): likely a typo or a copy of something else");
+            if (duplicates.Count > 0) problems.Add($"duplicated id(s): {string.Join(", ", duplicates)}");
+            if (apps.Count > 1) problems.Add($"the ids come from {apps.Count} different Play Games apps ({string.Join(", ", apps)}): some were copied from another game");
+
+            Add(results, CategoryAndroid, "Google Play achievement ids are well formed and unique", problems.Count == 0,
+                $"{googleIds.Count} ids, all valid and unique, all from Play Games app {apps.FirstOrDefault()}.",
+                string.Join("; ", problems) + ".",
+                "Re-copy the ids from Play Console (Play Games Services > Achievements) into the AchievementTierMap.",
+                whatIsThis: "Play Console gives every achievement a long id. A typo, a duplicate or an id from another game makes that achievement fail to unlock, with no error in the game.");
+
+            if (apps.Count == 1 && manifestAppId != null)
+            {
+                Add(results, CategoryAndroid, "Achievement ids match the manifest application id", apps[0] == manifestAppId,
+                    $"Both point to Play Games app {manifestAppId}.",
+                    $"The achievement ids belong to Play Games app {apps[0]}, but the manifest application id is {manifestAppId}: sign-in works for one app while unlocks target another, so nothing unlocks.",
+                    "Set the application id to the one in your achievement ids (Tools > Wagenheimer > Native Social > Set Google Play Games Application ID).",
+                    "Set Application ID...", GpgsAppIdSetup.OpenWindow,
+                    whatIsThis: "The application id in the manifest and the ids inside every achievement id must be the same Play Games project.");
+            }
+        }
+
+        /// <summary>The plugin's own settings must record the application id the manifest uses, and come from the installed plugin version.</summary>
+        private static void AuditGpgsPluginSetup(List<AuditResult> results, string manifestAppId, string manifestPath)
+        {
+            var storedAppId = ReadGpgsSetting("proj.AppId");
+            var storedVersion = ReadGpgsSetting("proj.pluginVersion");
+            var installed = GpgsInstaller.GetInstalledVersion();
+
+            var complete = !string.IsNullOrEmpty(storedAppId) && storedAppId == manifestAppId;
+            Add(results, CategoryAndroid, "Play Games Android setup was completed", complete,
+                $"The plugin's settings record application id {storedAppId}, the same as the manifest.",
+                string.IsNullOrEmpty(storedAppId)
+                    ? $"{GpgsSettingsFile} has no application id: the plugin's Android setup was never run in this project, so its manifest is incomplete."
+                    : $"The plugin's settings say {storedAppId} but the manifest has {manifestAppId ?? "none"}: regenerate the manifest.",
+                "Run the setup again from Tools > Wagenheimer > Native Social > Set Google Play Games Application ID.",
+                "Set Application ID...", GpgsAppIdSetup.OpenWindow,
+                whatIsThis: "Google's plugin keeps what you configured in ProjectSettings/GooglePlayGameSettings.txt and generates the Android manifest from it.");
+
+            if (!string.IsNullOrEmpty(installed) && !string.IsNullOrEmpty(storedVersion))
+            {
+                Add(results, CategoryAndroid, "Play Games setup was made with the installed plugin version", installed == storedVersion,
+                    $"Setup and plugin are both v{installed}.",
+                    $"The setup was made with plugin v{storedVersion} but v{installed} is installed; the generated manifest may be outdated.",
+                    "Run the Application ID step again so the manifest is regenerated by the installed version.",
+                    "Set Application ID...", GpgsAppIdSetup.OpenWindow, AuditSeverity.Info,
+                    whatIsThis: "The plugin regenerates its Android manifest only when you run its setup; updating the package alone does not.");
+            }
+        }
+
+        /// <summary>
+        /// Google only accepts a sign-in from a build signed with a key whose SHA-1 is registered under Play Games Services &gt; Credentials.
+        /// A build signed with Unity's debug keystore fails with DeveloperError unless that debug SHA-1 was registered too.
+        /// </summary>
+        private static void AuditAndroidSigning(List<AuditResult> results)
+        {
+            var custom = PlayerSettings.Android.useCustomKeystore;
+            Add(results, CategoryAndroid, "Android builds are signed with your own keystore", custom,
+                $"Custom keystore in use ({Path.GetFileName(PlayerSettings.Android.keystoreName)}). Make sure its SHA-1, and the Play app-signing SHA-1, are registered under Play Games Services > Credentials.",
+                "Builds are signed with Unity's debug keystore. Google Play Games rejects the sign-in (DeveloperError) unless that debug key's SHA-1 is registered in Play Console.",
+                "Sign release builds with your upload keystore, or register the debug keystore SHA-1 (keytool -list -v -keystore ~/.android/debug.keystore) as a Play Games credential.",
+                failSeverity: AuditSeverity.Warning,
+                whatIsThis: "Play Games identifies your app by package name + the SHA-1 of the signing key. A key that is not registered cannot sign in, even with a perfect application id.");
+        }
+
+        private static void AuditAndroidShrinking(List<AuditResult> results)
+        {
+            var shrinking = PlayerSettings.Android.minifyRelease || PlayerSettings.Android.minifyDebug;
+            Add(results, CategoryAndroid, "Code shrinking does not break the Play Games bridge", !shrinking,
+                "Code shrinking (R8) is off, so the Play Games classes are kept.",
+                "Code shrinking (minify) is on. The Play Games bridge (com.google.games.bridge, com.google.android.gms.games) must be kept by a proguard rule or sign-in can fail only in the shrunk build.",
+                "If sign-in works in a non-minified build but not here, add keep rules for com.google.games.bridge.** and com.google.android.gms.games.** to the project's proguard-user.txt.",
+                failSeverity: AuditSeverity.Info,
+                whatIsThis: "R8 removes code it thinks is unused; the Unity plugin reaches the Play Games SDK through Java reflection-like calls.");
+        }
+
+        #endregion
+
+        #region Game Center - deeper checks
+
+        /// <summary>Apple achievement identifiers are plain strings and are case sensitive; a duplicate or an empty one never unlocks.</summary>
+        private static void AuditAppleAchievementIds(List<AuditResult> results)
+        {
+            var appleIds = FindAllAchievementTierMaps()
+                .SelectMany(m => m.Entries)
+                .Select(e => e.AppleId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToList();
+            if (appleIds.Count == 0) return;
+
+            var duplicates = appleIds.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).Take(3).ToList();
+            var padded = appleIds.Where(id => id != id.Trim()).Take(3).ToList();
+            var problems = new List<string>();
+            if (duplicates.Count > 0) problems.Add($"duplicated id(s): {string.Join(", ", duplicates)}");
+            if (padded.Count > 0) problems.Add($"id(s) with leading/trailing spaces: {string.Join(", ", padded.Select(p => "'" + p + "'"))}");
+
+            Add(results, CategoryIOS, "Game Center achievement ids are unique and clean", problems.Count == 0,
+                $"{appleIds.Count} ids, all unique.",
+                string.Join("; ", problems) + ".",
+                "Fix the ids in the AchievementTierMap to match App Store Connect exactly (case sensitive).",
+                whatIsThis: "Game Center matches achievements by the identifier you typed in App Store Connect. Any difference means the achievement never unlocks.");
+        }
+
+        #endregion
+
         private static void AuditIOS(List<AuditResult> results)
         {
+            AuditAppleAchievementIds(results);
+
             bool isIosTarget = EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS;
             Add(results, CategoryIOS, "Apple Game Center Support", true,
                 isIosTarget ? "Active build target is iOS." : "Game Center is built directly into Unity iOS support.",
