@@ -725,6 +725,7 @@ public class NativeSocialBootstrap : MonoBehaviour
             AuditGoogleIdsConsistency(results, googleIds, manifestAppId);
             AuditGpgsPluginSetup(results, manifestAppId, manifestPath);
             AuditAndroidSigning(results);
+            AuditSigningFingerprint(results);
             AuditAndroidShrinking(results);
         }
 
@@ -801,6 +802,21 @@ public class NativeSocialBootstrap : MonoBehaviour
                 "Sign release builds with your upload keystore, or register the debug keystore SHA-1 (keytool -list -v -keystore ~/.android/debug.keystore) as a Play Games credential.",
                 failSeverity: AuditSeverity.Warning,
                 whatIsThis: "Play Games identifies your app by package name + the SHA-1 of the signing key. A key that is not registered cannot sign in, even with a perfect application id.");
+        }
+
+        /// <summary>Shows the fingerprint to register, read from the keystore Player Settings signs with.</summary>
+        private static void AuditSigningFingerprint(List<AuditResult> results)
+        {
+            var signing = AndroidSigningInfo.Read();
+            Add(results, CategoryAndroid, "Signing key SHA-1 (register it in Play Console)", false, string.Empty,
+                signing.HasFingerprint
+                    ? $"{signing.Description}: SHA-1 {signing.Sha1}. Register this exact fingerprint under Play Games Services > Credentials (an Android OAuth client for your package name), or sign-in fails with DeveloperError."
+                    : $"Could not read the fingerprint of the {signing.Description}: {signing.Error}.",
+                "Play Console > Play Games Services > Configuration > Credentials > Add credential > Android, with this package name and SHA-1. Builds made by an external pipeline may use another key: use the SHA-1 of THAT key too.",
+                signing.HasFingerprint ? "Copy SHA-1" : null,
+                signing.HasFingerprint ? () => GUIUtility.systemCopyBuffer = signing.Sha1 : (Action)null,
+                AuditSeverity.Info,
+                whatIsThis: "The fingerprint that identifies the key your Android build is signed with. Google compares it with the ones you registered before letting the game sign in.");
         }
 
         private static void AuditAndroidShrinking(List<AuditResult> results)

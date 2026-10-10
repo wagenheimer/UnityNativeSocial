@@ -759,6 +759,8 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 NativeSocial.Authenticate(success =>
                 {
                     AddLog($"Authenticate result: {success}", success ? LogType.Log : LogType.Warning);
+                    if (!string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport))
+                        AddLog(NativeSocial.LastAuthenticationReport, success ? LogType.Log : LogType.Warning);
                     RefreshDiagnostics();
                 });
             });
@@ -776,6 +778,16 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             });
             _manualAuthButton = manualAuthBtn;
             row1.Add(manualAuthBtn);
+
+#if UNITY_ANDROID
+            // Reads the built manifest's Play Games application id: an empty one makes every sign-in fail.
+            row1.Add(CreateActionButton("Check Config", () =>
+            {
+                var problem = NativeSocial.FindAndroidAppIdProblem();
+                AddLog(problem == null ? "Play Games application id is present in the manifest." : "Not configured: " + problem,
+                    problem == null ? LogType.Log : LogType.Error);
+            }));
+#endif
             card.Add(row1);
 
             var row2 = new VisualElement();
@@ -1485,7 +1497,11 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             }
             if (_statusSubtext != null)
             {
-                _statusSubtext.text = isAuth ? "Google Play Games Services signed in and ready." : "Click Authenticate to sign in with Play Games Services.";
+                _statusSubtext.text = isAuth
+                    ? "Google Play Games Services signed in and ready."
+                    : (string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport)
+                        ? "Click Authenticate to sign in with Play Games Services."
+                        : NativeSocial.LastAuthenticationReport);
             }
             authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;

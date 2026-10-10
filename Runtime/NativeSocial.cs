@@ -512,9 +512,14 @@ namespace Wagenheimer.NativeSocial
         /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
         /// </summary>
         /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
+        /// <summary>The outcome of the last sign-in attempt in plain words (service, success or the failure reason), for diagnostics UIs. Null before the first attempt.</summary>
+        public static string LastAuthenticationReport { get; private set; }
+
         /// <summary>Always visible in logcat / the Console (not only through <see cref="OnLog"/>): authentication failures are otherwise silent.</summary>
         private static void LogAuthenticationResult(string service, bool success, string detail)
         {
+            LastAuthenticationReport = success ? $"{service}: signed in." : $"{service}: FAILED - {detail}";
+
             if (success)
                 Debug.Log($"[NativeSocial] {service} sign-in succeeded.");
             else
