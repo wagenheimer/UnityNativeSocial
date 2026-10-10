@@ -651,23 +651,13 @@ public class NativeSocialBootstrap : MonoBehaviour
         /// </summary>
         private static void AuditGpgsApplicationId(List<AuditResult> results)
         {
-            var guid = AssetDatabase.FindAssets("AndroidManifest t:DefaultAsset")
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .FirstOrDefault(p => p.Contains("GooglePlayGamesManifest.androidlib"));
-
-            string appId = null;
-            if (guid != null && System.IO.File.Exists(guid))
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(System.IO.File.ReadAllText(guid), GpgsAppIdPattern);
-                if (match.Success) appId = match.Groups[1].Value;
-            }
-
-            var digits = appId == null ? 0 : appId.Count(char.IsDigit);
+            var appId = ReadGpgsManifestAppId(out var guid);
+            var digits = appId == null ? 0 : appId.Length;
             Add(results, CategoryAndroid, "Google Play Games Application ID", digits >= 8,
                 $"The Play Games application id is set in {guid}.",
                 guid == null
                     ? "The plugin's Android setup was never run: there is no GooglePlayGamesManifest.androidlib, so the build has no application id and Google sign-in will fail."
-                    : $"The application id in {guid} is empty or invalid (value '{appId}'). Google sign-in will fail on the device.",
+                    : $"The application id in {guid} is empty or invalid. Google sign-in will fail on the device.",
                 "Open Tools > Wagenheimer > Native Social > Set Google Play Games Application ID (works from any build target; Google's own \"Android setup\" window is greyed out unless the active build target is Android).",
                 "Set Application ID...", GpgsAppIdSetup.OpenWindow,
                 AuditSeverity.Fail,
@@ -681,17 +671,42 @@ public class NativeSocialBootstrap : MonoBehaviour
         /// <summary>The application id written in the generated Play Games manifest, or null (also returns the manifest path, or null when there is none).</summary>
         private static string ReadGpgsManifestAppId(out string manifestPath)
         {
-            manifestPath = AssetDatabase.FindAssets("AndroidManifest t:DefaultAsset")
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .FirstOrDefault(p => p.Contains("GooglePlayGamesManifest.androidlib"));
-
-            if (manifestPath == null || !File.Exists(manifestPath)) return null;
+            manifestPath = FindGpgsManifestPath();
+            if (manifestPath == null) return null;
 
             var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(manifestPath), GpgsAppIdPattern);
             if (!match.Success) return null;
 
-            var digits = new string(match.Groups[1].Value.Where(char.IsDigit).ToArray());
+            // The plugin writes a backslash-u-0-0-3 escape followed by the id (it keeps Android from reading the number as an int); only the id after it matters.
+            var value = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value, @"^\\u003", string.Empty);
+            var digits = new string(value.Where(char.IsDigit).ToArray());
             return digits.Length >= 8 ? digits : null;
+        }
+
+        /// <summary>
+        /// The plugin's generated manifest. It is found on disk: Unity treats a folder named *.androidlib as one opaque library and does NOT index the files
+        /// inside it, so AssetDatabase.FindAssets never sees AndroidManifest.xml (that made this check report "never run" right after a successful setup).
+        /// </summary>
+        private static string FindGpgsManifestPath()
+        {
+            try
+            {
+                var root = Path.Combine(Directory.GetCurrentDirectory(), "Assets");
+                foreach (var folder in Directory.GetDirectories(root, "GooglePlayGamesManifest.androidlib", SearchOption.AllDirectories))
+                {
+                    var file = Path.Combine(folder, "AndroidManifest.xml");
+                    if (File.Exists(file))
+                        return file.Substring(Directory.GetCurrentDirectory().Length + 1).Replace('\\', '/');
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
+            return null;
         }
 
         /// <summary>Reads "key=value" lines of the plugin's own settings file (ProjectSettings/GooglePlayGameSettings.txt).</summary>
