@@ -458,11 +458,33 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 row.Add(new Label($"{app.name}  ·  {AppDeployHubAppPicker.Identifier(app)}  ·  {AppDeployHubAppPicker.StoreLabel(app)}") { style = { flexShrink = 1, color = NativeSocialUIStyle.ColorText } });
                 box.Add(row);
             }
+            foreach (var line in DescribeStoreRoles(chosen))
+                box.Add(new Label(line.Text) { style = { marginTop = 4, whiteSpace = WhiteSpace.Normal, color = line.Warning ? NativeSocialUIStyle.ColorWarning : NativeSocialUIStyle.ColorTextMuted } });
+
             var change = NativeSocialUIStyle.CreateButton("Change…", () => { _pickerOpen = true; RebuildHubCard(); });
             change.style.marginTop = 4;
             change.style.alignSelf = Align.FlexStart;
             box.Add(change);
             return box;
+        }
+
+        /// <summary>What each chosen app is the source of, and where two selected records overlap, so the outcome of a pull is visible before it runs.</summary>
+        private static IEnumerable<(string Text, bool Warning)> DescribeStoreRoles(List<AppDeployHubClient.AppSummary> chosen)
+        {
+            var google = chosen.Where(a => StoreRoles.GoogleRank(a.platform) > 0).OrderByDescending(a => StoreRoles.GoogleRank(a.platform)).ToList();
+            var apple = chosen.Where(a => StoreRoles.AppleRank(a.platform) > 0).OrderByDescending(a => StoreRoles.AppleRank(a.platform)).ToList();
+
+            yield return ("Google Play IDs are read from: " + (google.Count == 0 ? "none selected" : google[0].name + " (" + AppDeployHubAppPicker.PlatformLabel(google[0]) + ")"), google.Count == 0);
+            yield return ("Game Center IDs are read from: " + (apple.Count == 0 ? "none selected" : apple[0].name + " (" + AppDeployHubAppPicker.PlatformLabel(apple[0]) + ")"), apple.Count == 0);
+
+            var shared = chosen.Where(a => StoreRoles.GoogleRank(a.platform) == StoreRoles.SharedSource && StoreRoles.AppleRank(a.platform) == StoreRoles.SharedSource).ToList();
+            if (shared.Count > 0 && chosen.Count > shared.Count)
+                yield return (string.Join(", ", shared.Select(a => a.name)) + " is a Universal / Cross-platform record: AppDeployHub keeps rows for BOTH stores on it. On a pull the Android / iOS record always wins over it; on a Send it also receives rows for the other store.", false);
+
+            var dedicatedGoogle = chosen.Count(a => StoreRoles.GoogleRank(a.platform) == StoreRoles.DedicatedSource);
+            var dedicatedApple = chosen.Count(a => StoreRoles.AppleRank(a.platform) == StoreRoles.DedicatedSource);
+            if (dedicatedGoogle > 1 || dedicatedApple > 1)
+                yield return ("Two records of the same store are selected: if they disagree on an ID the first one is kept. Select one per store.", true);
         }
 
         private VisualElement BuildPickerWithDone(bool hasSelection)
@@ -503,6 +525,10 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             var message = $"Send {_map.Entries.Count} tier(s) to:\n{targetLines}\n\n" +
                           $"Texts: {language}" + (extraLocales.Count > 0 ? $" + {extraLocales.Count} other language(s) ({string.Join(", ", extraLocales)})" : " only") + ".\n" +
                           "This creates or updates the achievement rows in AppDeployHub (matched by key). Nothing is deleted.";
+            var sharedTargets = targets.Where(t => StoreRoles.GoogleRank(t.platform) == StoreRoles.SharedSource && StoreRoles.AppleRank(t.platform) == StoreRoles.SharedSource).ToList();
+            if (sharedTargets.Count > 0 && targets.Count > sharedTargets.Count)
+                message += "\n\n" + string.Join(", ", sharedTargets.Select(t => t.name)) + " is a Universal / Cross-platform record, so it receives BOTH Google Play and Game Center rows, " +
+                           "not only the store of its own platform.";
             if (_pushGooglePlay || _pushGameCenter)
                 message += "\n\n⚠ You also chose to QUEUE A STORE PUSH: " +
                            string.Join(" and ", new[] { _pushGooglePlay ? "Google Play" : null, _pushGameCenter ? "Apple Game Center" : null }.Where(x => x != null)) +
@@ -576,40 +602,16 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             _hubBusy = true;
             pullBtn.SetEnabled(false);
             NativeSocialUIStyle.ApplyIconText(pullBtn, "Pulling…");
-            PullNext(targets, 0, pullBtn, new PullState());
+            PullNext(targets, 0, pullBtn, new AchievementPull(_map.Entries.Select(e => (AchievementTierMap.LocId(e.TrophyNumber, e.Tier), e.GooglePlayId, e.AppleId))));
         }
 
-        /// <summary>
-        /// What a pull from several apps changed. Counts distinct achievements (an entry that two apps both write is one change, not two) and
-        /// remembers which app set what, so two apps returning DIFFERENT ids for the same achievement are reported instead of the last silently winning.
-        /// </summary>
-        private sealed class PullState
-        {
-            private readonly Dictionary<string, (string App, string Id)> _google = new Dictionary<string, (string, string)>();
-            private readonly HashSet<string> _apple = new HashSet<string>();
-            private readonly List<string> _conflicts = new List<string>();
-
-            public int GoogleChanged => _google.Count;
-            public int AppleChanged => _apple.Count;
-            public IReadOnlyList<string> Conflicts => _conflicts;
-
-            public void RecordGoogle(string key, string app, string id)
-            {
-                if (_google.TryGetValue(key, out var previous) && previous.Id != id)
-                    _conflicts.Add($"{key}: '{previous.App}' says {previous.Id}, '{app}' says {id} (the last one was kept)");
-
-                _google[key] = (app, id);
-            }
-
-            public void RecordApple(string key) => _apple.Add(key);
-        }
-
-        private void PullNext(List<AppDeployHubClient.AppSummary> targets, int index, Button pullBtn, PullState state)
+        private void PullNext(List<AppDeployHubClient.AppSummary> targets, int index, Button pullBtn, AchievementPull state)
         {
             if (index >= targets.Count)
             {
-                var gpUpdated = state.GoogleChanged;
-                var gcUpdated = state.AppleChanged;
+                var currentIds = _map.Entries.Select(e => (AchievementTierMap.LocId(e.TrophyNumber, e.Tier), e.GooglePlayId, e.AppleId)).ToList();
+                var gpUpdated = state.CountGoogleChanges(currentIds);
+                var gcUpdated = state.CountAppleChanges(currentIds);
 
                 _hubBusy = false;
                 pullBtn.SetEnabled(true);
@@ -655,9 +657,15 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 if (state.Conflicts.Count > 0)
                 {
                     var conflictText = string.Join("\n", state.Conflicts.Take(5));
-                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ {state.Conflicts.Count} conquista(s) receberam IDs do Google Play DIFERENTES de apps diferentes; o último app venceu:\n{conflictText}");
-                    summaryMsg += $"\n\n⚠ {state.Conflicts.Count} conquista(s) vieram com IDs do Google Play diferentes em apps diferentes (o ÚLTIMO app foi mantido). " +
-                                  "Selecione apenas o app da loja que este mapa deve usar (ex.: o Android pago OU o gratuito), pois o mapa tem um ID por conquista.";
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ {state.Conflicts.Count} conflito(s): apps do MESMO tipo devolveram IDs diferentes (o primeiro foi mantido):\n{conflictText}");
+                    summaryMsg += $"\n\n⚠ {state.Conflicts.Count} conflito(s): dois apps do mesmo tipo devolveram IDs diferentes para a mesma conquista (o primeiro foi mantido). " +
+                                  "Selecione só UM app por loja (o mapa guarda um ID por conquista).";
+                }
+
+                if (state.IgnoredResourceIds > 0)
+                {
+                    Debug.LogWarning($"<color=#FFA726><b>[NativeSocial]</b></color> ⚠ O AppDeployHub devolveu {state.IgnoredResourceIds} id(s) da Apple em formato UUID (id interno do App Store Connect). Foram IGNORADOS: o Game Center usa o Achievement ID (a chave, ex.: Trophy1_1).");
+                    summaryMsg += $"\n\nℹ {state.IgnoredResourceIds} id(s) da Apple vieram como UUID (id interno do App Store Connect) e foram ignorados: o Game Center usa o Achievement ID (a chave do mapa).";
                 }
 
                 if (missingGp > 0)
@@ -725,28 +733,30 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                                 {
                                     bool changed = false;
 
-                                    // Atualiza Google Play ID (prioritário se Android/Universal, ou fallback se Apple tiver)
-                                    if (!string.IsNullOrEmpty(match.googlePlayId) && entry.GooglePlayId != match.googlePlayId)
+                                    // Each store reads only the records that really are a source for it (StoreRoles), and a dedicated
+                                    // record (Android / iOS) always beats a shared one (Universal), whatever the order of the selection.
+                                    if (state.OwnsGoogle(key, target.name, match.googlePlayId, StoreRoles.GoogleRank(target.platform)) &&
+                                        entry.GooglePlayId != match.googlePlayId)
                                     {
-                                        if (!isApple || string.IsNullOrEmpty(entry.GooglePlayId))
-                                        {
-                                            Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}': {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
-                                            entry.GooglePlayId = match.googlePlayId;
-                                            state.RecordGoogle(key, target.name, match.googlePlayId);
-                                            changed = true;
-                                        }
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado GooglePlayId de [{key}] '{entry.DisplayName}' ({target.name}): {entry.GooglePlayId ?? "(vazio)"} ➔ <b>{match.googlePlayId}</b>");
+                                        entry.GooglePlayId = match.googlePlayId;
+                                        changed = true;
                                     }
 
-                                    // Atualiza Apple Game Center ID (prioritário se Apple/Universal, ou fallback se Android tiver)
-                                    if (!string.IsNullOrEmpty(match.appleId) && entry.AppleId != match.appleId)
+                                    // The hub may answer with App Store Connect's internal UUID instead of the Achievement ID the game reports
+                                    // with; such a value is never written (the in-game id is the key).
+                                    var appleId = match.appleId;
+                                    if (StoreRoles.LooksLikeStoreResourceId(appleId))
                                     {
-                                        if (!isAndroid || string.IsNullOrEmpty(entry.AppleId))
-                                        {
-                                            Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}': {entry.AppleId ?? "(vazio)"} ➔ <b>{match.appleId}</b>");
-                                            entry.AppleId = match.appleId;
-                                            state.RecordApple(key);
-                                            changed = true;
-                                        }
+                                        state.NoteIgnoredResourceId();
+                                        appleId = null;
+                                    }
+
+                                    if (state.OwnsApple(key, target.name, appleId, StoreRoles.AppleRank(target.platform)) && entry.AppleId != appleId)
+                                    {
+                                        Debug.Log($"<color=#4CAF50><b>[NativeSocial]</b></color> Atualizado AppleId de [{key}] '{entry.DisplayName}' ({target.name}): {entry.AppleId ?? "(vazio)"} ➔ <b>{appleId}</b>");
+                                        entry.AppleId = appleId;
+                                        changed = true;
                                     }
 
                                     if (match.isIncremental && (!entry.IsIncremental || entry.StepsToUnlock != match.stepsToUnlock))
