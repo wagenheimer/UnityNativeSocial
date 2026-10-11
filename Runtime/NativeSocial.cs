@@ -673,6 +673,77 @@ namespace Wagenheimer.NativeSocial
         }
 
         /// <summary>
+        /// One-liner zero-boilerplate social connector for games.
+        /// <para>Automatically detects the current runtime platform and initiates authentication when appropriate:</para>
+        /// <list type="bullet">
+        ///   <item><description><b>Android:</b> Activates Google Play Games with debug logging enabled, runs automatic sign-in, and automatically falls back to <see cref="AuthenticateManually"/> if initial silent sign-in fails.</description></item>
+        ///   <item><description><b>iOS:</b> Connects to Apple Game Center directly.</description></item>
+        ///   <item><description><b>macOS:</b> If <paramref name="enablePlatformSocial"/> is true (e.g. Mac App Store build), connects to Game Center. If false (e.g. Big Fish / Steam / generic standalone), remains no-op.</description></item>
+        ///   <item><description><b>Other / Standalone:</b> Stays local/no-op.</description></item>
+        /// </list>
+        /// </summary>
+        /// <param name="enablePlatformSocial">
+        /// Pass true to allow platform social services on desktop (e.g. <c>Config.Publisher == Publisher.MacAppStore</c>). On mobile platforms (Android/iOS), this is considered always true.
+        /// </param>
+        /// <param name="onComplete">Optional callback invoked with the final authentication outcome.</param>
+        public static void AutoConnect(bool enablePlatformSocial = true, Action<bool> onComplete = null)
+        {
+#if UNITY_IOS
+            Debug.Log("[NativeSocial] AutoConnect: Initiating Apple Game Center authentication...");
+            Authenticate(success =>
+            {
+                if (success)
+                    Debug.Log($"[NativeSocial] Game Center authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
+                else
+                    Debug.LogWarning($"[NativeSocial] Game Center authentication: Failed. Report: {LastAuthenticationReport}");
+                onComplete?.Invoke(success);
+            });
+#elif UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM
+            if (!enablePlatformSocial)
+            {
+                Debug.Log("[NativeSocial] AutoConnect: Skipped on macOS (platform social is disabled for this store/publisher).");
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            Debug.Log("[NativeSocial] AutoConnect: Initiating Mac App Store Game Center authentication...");
+            Authenticate(success =>
+            {
+                if (success)
+                    Debug.Log($"[NativeSocial] Game Center authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
+                else
+                    Debug.LogWarning($"[NativeSocial] Game Center authentication: Failed. Report: {LastAuthenticationReport}");
+                onComplete?.Invoke(success);
+            });
+#elif UNITY_ANDROID
+            Debug.Log("[NativeSocial] AutoConnect: Initiating Google Play Games authentication...");
+            Authenticate(success =>
+            {
+                if (success)
+                {
+                    Debug.Log($"[NativeSocial] GPGS authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
+                    onComplete?.Invoke(true);
+                }
+                else
+                {
+                    Debug.LogWarning($"[NativeSocial] GPGS auto sign-in did not succeed ({LastAuthenticationReport}). Retrying with AuthenticateManually...");
+                    AuthenticateManually(manualSuccess =>
+                    {
+                        if (manualSuccess)
+                            Debug.Log($"[NativeSocial] GPGS manual authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
+                        else
+                            Debug.LogWarning($"[NativeSocial] GPGS manual authentication: Failed. Report: {LastAuthenticationReport}");
+                        onComplete?.Invoke(manualSuccess);
+                    });
+                }
+            });
+#else
+            Debug.Log($"[NativeSocial] AutoConnect: No platform social service active on this target ({Application.platform}). Keeping progress local.");
+            onComplete?.Invoke(false);
+#endif
+        }
+
+        /// <summary>
         /// (Android) Requests a server auth code (OAuth 2.0 authorization code) for the signed-in
         /// player, for use with server-side sign-in — e.g. Unity Authentication's
         /// <c>LinkWithGooglePlayGamesAsync(serverAuthCode)</c>. Requires GPGS plugin v2+.

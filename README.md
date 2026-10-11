@@ -76,7 +76,23 @@ NativeSocial.Report("ach_wildcards", delta: 1, current: 5, total: 20, completed:
 NativeSocial.Report("ach_wildcards", delta: 0, current: 20, total: 20, completed: true);
 ```
 
-### 3. Authenticate (Android: Google Play Games / iOS: Game Center)
+### 3. Authenticate & AutoConnect (Recommended)
+
+The easiest and cleanest way to connect on all platforms with zero boilerplate:
+
+```csharp
+// Call in your startup GameManager / Main.cs
+// On mobile (Android/iOS) it always connects.
+// On desktop, pass true only for Mac App Store builds (e.g. Config.Publisher == Publisher.MacAppStore).
+NativeSocial.AutoConnect(enablePlatformSocial: Main.main.IsMobile);
+```
+
+`AutoConnect` automatically:
+- Enables Google Play Games with debug logging and handles fallback to manual sign-in on Android.
+- Connects to Apple Game Center on iOS and Mac App Store.
+- Silently keeps progress local without throwing errors on Big Fish, Steam or generic standalone targets.
+
+For granular control, you can still call the lower-level methods directly:
 
 ```csharp
 NativeSocial.Authenticate(success =>

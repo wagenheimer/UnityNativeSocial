@@ -6,11 +6,14 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
 
 - `Runtime/NativeSocial.cs` — the static entry point. `Initialize(androidMap, iosMap, steamMap)` must be
   called once at startup (see `Editor/PackageHubBootstrap`/`NativeSocialAudit`'s "Project bootstrap script"
-  check) or every `Report`/`SubmitScore` call silently no-ops. Platform SDKs are wrapped behind
-  `WAGENHEIMER_NATIVESOCIAL_STEAM`/`WAGENHEIMER_NATIVESOCIAL_GPGS` compile-time defines
+  check) or every `Report`/`SubmitScore` call silently no-ops. `NativeSocial.AutoConnect(bool enablePlatformSocial = true)`
+  is the zero-boilerplate one-liner for game managers (`Main.cs`): automatically manages Google Play Games
+  activation with debug logs + fallback to manual auth on Android, Apple Game Center on iOS/Mac App Store,
+  and avoids touching platform social on Big Fish / Steam / standalone builds.
+  Platform SDKs are wrapped behind `WAGENHEIMER_NATIVESOCIAL_STEAM`/`WAGENHEIMER_NATIVESOCIAL_GPGS` compile-time defines
   (`Runtime/Wagenheimer.NativeSocial.asmdef`'s `versionDefines`, both with an empty `expression` so they
   fire for *any* resolved version of `com.rlabrecque.steamworks.net`/`com.google.play.games` — Game Center
-  needs no such gate, it's built into Unity's iOS support).
+  needs no such gate, it's built into Unity's iOS and macOS StandaloneOSX support).
 - `Runtime/AchievementTierMap.cs` — reusable per-game `ScriptableObject`: one row per achievement tier
   (`TrophyNumber`/`Tier`/`SteamStat`/`GooglePlayId`/`AppleId`, plus display metadata used only by the
   AppDeployHub exporter below). `LocId(trophyNumber, tier)` is the canonical `"Trophy{N}_{tier}"` string —

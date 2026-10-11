@@ -130,7 +130,7 @@ namespace Wagenheimer.NativeSocial.Editor
                     analysis.InitializePath = path;
                 }
 
-                if (!analysis.HasAuthenticate && (text.Contains("NativeSocial.Authenticate") || text.Contains("Social.localUser.Authenticate") || text.Contains("PlayGamesPlatform.Instance.Authenticate")))
+                if (!analysis.HasAuthenticate && (text.Contains("NativeSocial.AutoConnect") || text.Contains("NativeSocial.Authenticate") || text.Contains("Social.localUser.Authenticate") || text.Contains("PlayGamesPlatform.Instance.Authenticate")))
                 {
                     analysis.HasAuthenticate = true;
                     analysis.AuthenticatePath = path;
