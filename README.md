@@ -117,7 +117,20 @@ NativeSocial.Authenticate(success =>
 NativeSocial.GetServerAuthCode(serverAuthCode => { ... });
 ```
 
-### 5. Leaderboards
+### 5. Open Achievements UI (In-Game Button)
+
+```csharp
+// From any menu / button click (e.g. formExtras.cs)
+NativeSocial.OpenAchievementsUI((opened, errorMessage) =>
+{
+    if (!opened && !string.IsNullOrEmpty(errorMessage))
+    {
+        Debug.LogWarning($"Could not display achievements: {errorMessage}");
+    }
+});
+```
+
+### 6. Leaderboards
 
 ```csharp
 NativeSocial.SubmitScore("lb_highscore", 1234);

@@ -10,6 +10,9 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
   is the zero-boilerplate one-liner for game managers (`Main.cs`): automatically manages Google Play Games
   activation with debug logs + fallback to manual auth on Android, Apple Game Center on iOS/Mac App Store,
   and avoids touching platform social on Big Fish / Steam / standalone builds.
+  `NativeSocial.OpenAchievementsUI(Action<bool, string> onResult)` is the zero-boilerplate one-liner for
+  in-game achievement buttons (`formExtras.cs`): shows the native UI directly if signed in, or triggers
+  the platform-specific sign-in retry flow and presents the UI upon success.
   Platform SDKs are wrapped behind `WAGENHEIMER_NATIVESOCIAL_STEAM`/`WAGENHEIMER_NATIVESOCIAL_GPGS` compile-time defines
   (`Runtime/Wagenheimer.NativeSocial.asmdef`'s `versionDefines`, both with an empty `expression` so they
   fire for *any* resolved version of `com.rlabrecque.steamworks.net`/`com.google.play.games` — Game Center

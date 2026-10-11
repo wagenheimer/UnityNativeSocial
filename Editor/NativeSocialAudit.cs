@@ -154,7 +154,7 @@ namespace Wagenheimer.NativeSocial.Editor
                     analysis.SyncCompletedPath = path;
                 }
 
-                if (!analysis.HasShowAchievementsUI && (text.Contains("NativeSocial.ShowAchievementsUI") || text.Contains("Social.ShowAchievementsUI")))
+                if (!analysis.HasShowAchievementsUI && (text.Contains("NativeSocial.OpenAchievementsUI") || text.Contains("NativeSocial.ShowAchievementsUI") || text.Contains("Social.ShowAchievementsUI")))
                 {
                     analysis.HasShowAchievementsUI = true;
                     analysis.ShowAchievementsUIPath = path;

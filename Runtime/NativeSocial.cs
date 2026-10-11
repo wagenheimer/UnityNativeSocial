@@ -430,6 +430,67 @@ namespace Wagenheimer.NativeSocial
 #endif
         }
 
+        /// <summary>
+        /// One-liner to open the platform's native achievements screen from buttons or menus.
+        /// <para>
+        /// If already authenticated, opens the native achievements screen immediately.
+        /// If not authenticated yet, automatically triggers the appropriate sign-in flow for the platform
+        /// (<see cref="AuthenticateManually"/> on Android to show profile UI, or <see cref="Authenticate"/> on iOS/macOS)
+        /// and opens the achievements screen as soon as authentication succeeds.
+        /// </para>
+        /// </summary>
+        /// <param name="onResult">
+        /// Callback invoked when the operation completes.
+        /// Parameters: <c>(bool opened, string errorMessage)</c>.
+        /// <c>opened</c> is true if the native UI was displayed.
+        /// If false, <c>errorMessage</c> contains an English description of the failure suitable for diagnostics or fallback.
+        /// </param>
+        public static void OpenAchievementsUI(Action<bool, string> onResult = null)
+        {
+            if (ShowAchievementsUI())
+            {
+                onResult?.Invoke(true, null);
+                return;
+            }
+
+#if UNITY_ANDROID
+            Debug.Log("[NativeSocial] OpenAchievementsUI: Not authenticated. Requesting manual GPGS sign-in...");
+            AuthenticateManually(success =>
+            {
+                if (success && ShowAchievementsUI())
+                {
+                    onResult?.Invoke(true, null);
+                }
+                else
+                {
+                    string err = success
+                        ? "Could not open the achievements screen."
+                        : (LastAuthenticationReport ?? "Could not sign in to Google Play Games.");
+                    onResult?.Invoke(false, err);
+                }
+            });
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
+            Debug.Log("[NativeSocial] OpenAchievementsUI: Not authenticated. Requesting Apple Game Center sign-in...");
+            Authenticate(success =>
+            {
+                if (success && ShowAchievementsUI())
+                {
+                    onResult?.Invoke(true, null);
+                }
+                else
+                {
+                    string err = success
+                        ? "Could not open the achievements screen."
+                        : (LastAuthenticationReport ?? "Could not sign in to Apple Game Center.");
+                    onResult?.Invoke(false, err);
+                }
+            });
+#else
+            OnLog?.Invoke("[NativeSocial] OpenAchievementsUI: No native achievements UI on this platform (Steam/standalone).");
+            onResult?.Invoke(false, "No native achievements screen on this platform.");
+#endif
+        }
+
         // ── Leaderboards ─────────────────────────────────────────────
 
         /// <summary>
