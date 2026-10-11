@@ -7,7 +7,7 @@ using GooglePlayGames;
 using GooglePlayGames.BasicApi;
 #endif
 
-#if UNITY_IOS
+#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
 using UnityEngine.SocialPlatforms.GameCenter;
 #endif
 
@@ -99,7 +99,7 @@ namespace Wagenheimer.NativeSocial
             _iosLeaderboardMap = iosLeaderboardMap ?? new Dictionary<string, string>();
             _initialized = true;
 
-#if UNITY_IOS
+#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             try
             {
                 // In Unity, GameKit completion banner is disabled by default. Enable it so Apple's native
@@ -108,7 +108,7 @@ namespace Wagenheimer.NativeSocial
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[NativeSocial] Failed to enable iOS achievement banner: {ex.Message}");
+                Debug.LogWarning($"[NativeSocial] Failed to enable Apple achievement banner: {ex.Message}");
             }
 #endif
 
@@ -176,7 +176,7 @@ namespace Wagenheimer.NativeSocial
             // no runtime platform switch here, each build only ever contains its own path.
 #if UNITY_ANDROID
             ReportAndroid(locId, delta, completed);
-#elif UNITY_IOS
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             ReportIOS(locId, current, total, completed);
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             ReportSteam(locId, delta, current, completed);
@@ -210,7 +210,7 @@ namespace Wagenheimer.NativeSocial
         }
 #endif
 
-#if UNITY_IOS
+#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
         /// <summary>Reports the mapped Game Center achievement as a 0-100% completion percentage.</summary>
         /// <param name="locId">Game-defined achievement key, looked up in <see cref="_iosMap"/> to find the Game Center achievement ID.</param>
         /// <param name="current">Current progress count (e.g. 5 wildcards collected so far). Combined with <paramref name="total"/> to compute the percentage Game Center expects.</param>
@@ -330,7 +330,7 @@ namespace Wagenheimer.NativeSocial
 
 #if UNITY_ANDROID
             SyncCompletedAndroid(completedLocIds);
-#elif UNITY_IOS
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             SyncCompletedIOS(completedLocIds);
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
             SyncCompletedSteam(completedLocIds);
@@ -356,7 +356,7 @@ namespace Wagenheimer.NativeSocial
         }
 #endif
 
-#if UNITY_IOS
+#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
         /// <summary>Re-reports 100% progress for every already-completed achievement on Game Center.</summary>
         /// <param name="completedLocIds">LocIDs of achievements to re-report, looked up in <see cref="_iosMap"/> to find each Game Center achievement ID.</param>
         private static void SyncCompletedIOS(IEnumerable<string> completedLocIds)
@@ -419,7 +419,7 @@ namespace Wagenheimer.NativeSocial
             OnLog?.Invoke("[NativeSocial] Opening GPGS native achievements UI.");
             PlayGamesPlatform.Instance.ShowAchievementsUI();
             return true;
-#elif UNITY_IOS
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             OnLog?.Invoke("[NativeSocial] Opening Game Center native achievements UI.");
             Social.ShowAchievementsUI();
             return true;
@@ -455,7 +455,7 @@ namespace Wagenheimer.NativeSocial
                 PlayGamesPlatform.Instance.ReportScore(score, androidId, _ => { });
             }
             else OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: no GPGS leaderboard id mapped.");
-#elif UNITY_IOS
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             if (_iosLeaderboardMap.TryGetValue(locId, out var iosId))
             {
                 OnLog?.Invoke($"[NativeSocial] Game Center ReportScore('{iosId}') = {score}.");
@@ -467,7 +467,7 @@ namespace Wagenheimer.NativeSocial
 
         /// <summary>
         /// Opens the platform-native leaderboard screen (Google Play Games on Android, Game Center
-        /// on iOS). Pass null to open the all-leaderboards screen on Android.
+        /// on iOS/macOS). Pass null to open the all-leaderboards screen on Android.
         /// </summary>
         /// <returns>True if a native UI was shown; false when there is no UI for the current platform/state.</returns>
         public static bool ShowLeaderboardUI(string locId = null)
@@ -488,7 +488,7 @@ namespace Wagenheimer.NativeSocial
             }
             OnLog?.Invoke($"[NativeSocial] ShowLeaderboardUI skipped: no GPGS leaderboard id mapped for '{locId}'.");
             return false;
-#elif UNITY_IOS
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             if (locId != null && _iosLeaderboardMap.ContainsKey(locId))
             {
                 OnLog?.Invoke($"[NativeSocial] Opening Game Center leaderboards UI for '{locId}'.");
@@ -597,7 +597,7 @@ namespace Wagenheimer.NativeSocial
 
         public static void Authenticate(Action<bool> callback)
         {
-#if UNITY_IOS
+#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             try
             {
                 UnityEngine.SocialPlatforms.GameCenter.GameCenterPlatform.ShowDefaultAchievementCompletionBanner(true);
