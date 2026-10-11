@@ -616,16 +616,22 @@ namespace Wagenheimer.NativeSocial
                 callback?.Invoke(success);
             });
 #elif UNITY_ANDROID
+            // Habilita debug logs internos do SDK do Google Play Games para aparecerem no logcat
+            PlayGamesPlatform.DebugLogEnabled = true;
+            PlayGamesPlatform.Activate();
+
             // Say it loudly BEFORE signing in: a missing Play Games application id makes every call fail without a useful message.
             var configurationProblem = FindAndroidAppIdProblem();
             if (configurationProblem != null)
                 Debug.LogError("[NativeSocial] Google Play Games is not configured: " + configurationProblem);
 
+            Debug.Log($"[NativeSocial] Iniciando autenticação automática GPGS (DebugLogEnabled={PlayGamesPlatform.DebugLogEnabled})...");
             PlayGamesPlatform.Instance.Authenticate(status =>
             {
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
                 OnAuthenticated?.Invoke(success);
+                Debug.Log($"[NativeSocial] GPGS Authenticate callback: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
                 OnLog?.Invoke($"[NativeSocial] GPGS Authenticate: {status} ({success})");
                 LogAuthenticationResult("Google Play Games", success, success ? "signed in" : $"{status}. {DescribeSignInFailure(status.ToString())}");
                 callback?.Invoke(success);
@@ -646,12 +652,18 @@ namespace Wagenheimer.NativeSocial
         public static void AuthenticateManually(Action<bool> callback)
         {
 #if UNITY_ANDROID
+            PlayGamesPlatform.DebugLogEnabled = true;
+            PlayGamesPlatform.Activate();
+
+            Debug.Log("[NativeSocial] Iniciando GPGS ManuallyAuthenticate...");
             PlayGamesPlatform.Instance.ManuallyAuthenticate(status =>
             {
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
                 OnAuthenticated?.Invoke(success);
+                Debug.Log($"[NativeSocial] GPGS ManuallyAuthenticate callback: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
                 OnLog?.Invoke($"[NativeSocial] GPGS ManuallyAuthenticate: {status} ({success})");
+                LogAuthenticationResult("Google Play Games (Manual)", success, success ? "signed in" : $"{status}. {DescribeSignInFailure(status.ToString())}");
                 callback?.Invoke(success);
             });
 #else
