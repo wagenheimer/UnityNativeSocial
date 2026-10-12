@@ -24,7 +24,7 @@ namespace Wagenheimer.NativeSocial
     /// active compile-time platform. Callers use a single, platform-agnostic API and
     /// never touch the underlying SDKs directly.
     /// </summary>
-    public static class NativeSocial
+    public static partial class NativeSocial
     {
         // Per-platform achievement ID maps: game-defined "LocID" -> platform-specific achievement ID.
         // Keeping these as data (rather than hardcoding platform IDs across game code) means a single
@@ -119,10 +119,11 @@ namespace Wagenheimer.NativeSocial
 
 #if UNITY_ANDROID
         /// <summary>
-        /// Whether the player is currently signed in to Google Play Games.
-        /// Set this from your GPGS sign-in callback; achievement calls are no-ops until then.
+        /// Whether the player is currently signed in to Google Play Games. Maintained by NativeSocial's own
+        /// sign-in calls (and re-checked when the game returns to the foreground); progress reported while
+        /// signed out is queued and sent after the next sign-in.
         /// </summary>
-        public static bool IsAuthenticated { get; set; }
+        public static bool IsAuthenticated { get; private set; }
 #endif
 
 #if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
@@ -175,7 +176,7 @@ namespace Wagenheimer.NativeSocial
             // Exactly one of these branches is compiled in per build target — there is
             // no runtime platform switch here, each build only ever contains its own path.
 #if UNITY_ANDROID
-            ReportAndroid(locId, delta, completed);
+            ReportAndroid(locId, delta, current, completed);
 #elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             ReportIOS(locId, current, total, completed);
 #elif WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
@@ -186,27 +187,23 @@ namespace Wagenheimer.NativeSocial
         }
 
 #if UNITY_ANDROID
-        /// <summary>Increments/unlocks the mapped Google Play Games achievement.</summary>
+        /// <summary>Sets the steps of / unlocks the mapped Google Play Games achievement, or queues it while signed out.</summary>
         /// <param name="locId">Game-defined achievement key, looked up in <see cref="_androidMap"/> to find the GPGS achievement ID.</param>
-        /// <param name="delta">How much to increment the GPGS incremental-achievement counter by. 0 or negative means "don't increment" (e.g. a completed-only call).</param>
+        /// <param name="delta">Increment used only when <paramref name="current"/> is not known (0 or negative).</param>
+        /// <param name="current">Absolute progress, sent with the idempotent <c>SetStepsAtLeast</c> so it can be re-sent after a later sign-in. Must use the same unit as the achievement's steps in the Play Console.</param>
         /// <param name="completed">If true, unlocks the achievement outright regardless of its counter state.</param>
-        private static void ReportAndroid(string locId, int delta, bool completed)
+        private static void ReportAndroid(string locId, int delta, int current, bool completed)
         {
             if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportAndroid skipped: locId is null."); return; }
-            if (!IsAuthenticated) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: GPGS is not authenticated yet (reports are dropped while signed out)."); return; }
             if (!_androidMap.TryGetValue(locId, out var gpgsId)) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: no GPGS achievement id mapped for this LocID."); return; }
 
-            if (delta > 0)
+            if (!IsAuthenticated)
             {
-                OnLog?.Invoke($"[NativeSocial] GPGS IncrementAchievement('{gpgsId}') by {delta} for '{locId}'. NOTE: the Play Games screen only shows a progress bar if '{gpgsId}' is an INCREMENTAL achievement (with steps) in the Play Console; a STANDARD achievement shows locked/unlocked only.");
-                PlayGamesPlatform.Instance.IncrementAchievement(gpgsId, delta, _ => { });
+                QueuePendingAndroidProgress(locId, current, completed);
+                return;
             }
 
-            if (completed)
-            {
-                OnLog?.Invoke($"[NativeSocial] GPGS UnlockAchievement('{gpgsId}') for '{locId}'.");
-                PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, _ => { });
-            }
+            SendAndroidProgress(locId, gpgsId, delta, current, completed);
         }
 #endif
 
@@ -351,7 +348,7 @@ namespace Wagenheimer.NativeSocial
             {
                 if (locId == null) continue;
                 if (_androidMap.TryGetValue(locId, out var gpgsId))
-                    PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, _ => { });
+                    PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, ok => LogGpgsCallback("UnlockAchievement", gpgsId, locId, ok));
             }
         }
 #endif
@@ -365,7 +362,7 @@ namespace Wagenheimer.NativeSocial
             {
                 if (locId == null) continue;
                 if (_iosMap.TryGetValue(locId, out var gcId))
-                    Social.ReportProgress(gcId, 100.0, _ => { });
+                    Social.ReportProgress(gcId, 100.0, ok => { if (!ok) Debug.LogWarning($"[NativeSocial] Game Center re-sync of '{gcId}' ({locId}) FAILED."); });
             }
         }
 #endif
@@ -513,14 +510,14 @@ namespace Wagenheimer.NativeSocial
             if (_androidLeaderboardMap.TryGetValue(locId, out var androidId))
             {
                 OnLog?.Invoke($"[NativeSocial] GPGS ReportScore('{androidId}') = {score}.");
-                PlayGamesPlatform.Instance.ReportScore(score, androidId, _ => { });
+                PlayGamesPlatform.Instance.ReportScore(score, androidId, ok => LogGpgsCallback("ReportScore", androidId, locId, ok));
             }
             else OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: no GPGS leaderboard id mapped.");
 #elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             if (_iosLeaderboardMap.TryGetValue(locId, out var iosId))
             {
                 OnLog?.Invoke($"[NativeSocial] Game Center ReportScore('{iosId}') = {score}.");
-                Social.ReportScore(score, iosId, _ => { });
+                Social.ReportScore(score, iosId, ok => { if (!ok) Debug.LogWarning($"[NativeSocial] Game Center ReportScore('{iosId}') FAILED for '{locId}'."); });
             }
             else OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: no Game Center leaderboard mapped.");
 #endif
@@ -825,9 +822,7 @@ namespace Wagenheimer.NativeSocial
                 callback?.Invoke(success);
             });
 #elif UNITY_ANDROID
-            // Habilita debug logs internos do SDK do Google Play Games para aparecerem no logcat
-            PlayGamesPlatform.DebugLogEnabled = true;
-            PlayGamesPlatform.Activate();
+            EnsureGpgsActivated();
 
             // Say it loudly BEFORE signing in: a missing Play Games application id makes every call fail without a useful message.
             var configurationProblem = FindAndroidAppIdProblem();
@@ -836,10 +831,12 @@ namespace Wagenheimer.NativeSocial
             LogAndroidDiagnosticsOnce();
 
             Debug.Log($"[NativeSocial] Iniciando autenticação automática GPGS (DebugLogEnabled={PlayGamesPlatform.DebugLogEnabled})...");
+            _signInInProgress = true;
             PlayGamesPlatform.Instance.Authenticate(status =>
             {
+                _signInInProgress = false;
                 var success = status == SignInStatus.Success;
-                if (success) IsAuthenticated = true;
+                HandleGpgsSignInResult(success);
                 OnAuthenticated?.Invoke(success);
                 Debug.Log($"[NativeSocial] GPGS Authenticate callback: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
                 OnLog?.Invoke($"[NativeSocial] GPGS Authenticate: {status} ({success})");
@@ -862,18 +859,19 @@ namespace Wagenheimer.NativeSocial
         public static void AuthenticateManually(Action<bool> callback)
         {
 #if UNITY_ANDROID
-            PlayGamesPlatform.DebugLogEnabled = true;
-            PlayGamesPlatform.Activate();
-
+            EnsureGpgsActivated();
             LogAndroidDiagnosticsOnce();
 
             Debug.Log("[NativeSocial] Iniciando GPGS ManuallyAuthenticate...");
             var startedAt = Time.realtimeSinceStartup;
+            _signInInProgress = true;
             PlayGamesPlatform.Instance.ManuallyAuthenticate(status =>
             {
+                _signInInProgress = false;
                 var elapsed = Time.realtimeSinceStartup - startedAt;
                 var success = status == SignInStatus.Success;
-                if (success) IsAuthenticated = true;
+                HandleGpgsSignInResult(success);
+                RememberManualSignInOutcome(success, status, elapsed);
                 OnAuthenticated?.Invoke(success);
                 Debug.Log($"[NativeSocial] GPGS ManuallyAuthenticate callback after {elapsed * 1000f:0} ms: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
 
@@ -896,7 +894,7 @@ namespace Wagenheimer.NativeSocial
         /// One-liner zero-boilerplate social connector for games.
         /// <para>Automatically detects the current runtime platform and initiates authentication when appropriate:</para>
         /// <list type="bullet">
-        ///   <item><description><b>Android:</b> Activates Google Play Games with debug logging enabled, runs automatic sign-in, and automatically falls back to <see cref="AuthenticateManually"/> if initial silent sign-in fails.</description></item>
+        ///   <item><description><b>Android:</b> Activates Google Play Games with debug logging enabled, runs automatic sign-in, and falls back to <see cref="AuthenticateManually"/> if it fails - unless the player already dismissed that sign-in screen once (remembered in PlayerPrefs until a successful sign-in), in which case it stays signed out and <see cref="OpenAchievementsUI"/> offers sign-in on demand.</description></item>
         ///   <item><description><b>iOS:</b> Connects to Apple Game Center directly.</description></item>
         ///   <item><description><b>macOS:</b> If <paramref name="enablePlatformSocial"/> is true (e.g. Mac App Store build), connects to Game Center. If false (e.g. Big Fish / Steam / generic standalone), remains no-op.</description></item>
         ///   <item><description><b>Other / Standalone:</b> Stays local/no-op.</description></item>
@@ -943,6 +941,13 @@ namespace Wagenheimer.NativeSocial
                 {
                     Debug.Log($"[NativeSocial] GPGS authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
                     onComplete?.Invoke(true);
+                }
+                else if (PlayerDeclinedManualSignIn)
+                {
+                    // Google's guidance: don't push the sign-in UI at every launch on a player who said no.
+                    Debug.Log($"[NativeSocial] GPGS auto sign-in did not succeed ({LastAuthenticationReport}) and the player dismissed the sign-in screen before: " +
+                              "not prompting at startup. NativeSocial.OpenAchievementsUI() still offers sign-in from the achievements button.");
+                    onComplete?.Invoke(false);
                 }
                 else
                 {

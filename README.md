@@ -88,7 +88,11 @@ NativeSocial.AutoConnect(enablePlatformSocial: Main.main.IsMobile);
 ```
 
 `AutoConnect` automatically:
-- Enables Google Play Games with debug logging and handles fallback to manual sign-in on Android.
+- Enables Google Play Games with debug logging and handles fallback to manual sign-in on Android. If the player dismisses that sign-in screen, it is not shown again at startup (remembered until a successful sign-in); `OpenAchievementsUI` still offers sign-in from the achievements button.
+- Logs a `GPGS diagnostics` block on Android (package, Play Games app id, **SHA-1 of the certificate that signed the install**, installer, Play services versions). Also available as `NativeSocial.GetAndroidDiagnostics()` and in the debug overlay.
+- Re-checks Play Games sign-in (without UI) when the game returns to the foreground.
+
+On Android, achievement progress is sent with `SetStepsAtLeast(current)` (idempotent). Progress reported while signed out is queued in PlayerPrefs and delivered after the next sign-in, so the `current` passed to `Report` must use the same unit as the achievement's steps in the Play Console.
 - Connects to Apple Game Center on iOS and Mac App Store.
 - Silently keeps progress local without throwing errors on Big Fish, Steam or generic standalone targets.
 
@@ -137,13 +141,12 @@ NativeSocial.SubmitScore("lb_highscore", 1234);
 NativeSocial.ShowLeaderboardUI("lb_highscore"); // null = all leaderboards screen (Android)
 ```
 
-### 6. Set platform as ready (Android only)
+### 6. Re-sync completed achievements (Android only)
 
 ```csharp
-// NativeSocial.Authenticate already sets IsAuthenticated on success,
-// but you can set it manually after your own GPGS sign-in flow:
-NativeSocial.IsAuthenticated = true;
-NativeSocial.SyncCompleted(new[] { "ach_wildcards", "ach_lightning" });
+// IsAuthenticated is read-only: NativeSocial's own sign-in calls maintain it.
+if (NativeSocial.IsAuthenticated)
+    NativeSocial.SyncCompleted(new[] { "ach_wildcards", "ach_lightning" });
 ```
 
 ### 7. Show achievements UI

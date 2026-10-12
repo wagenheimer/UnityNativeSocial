@@ -67,6 +67,7 @@ namespace Wagenheimer.NativeSocial.UI
         // Header and diagnostics
         private Label _statusBanner;
         private Label _statusSubtext;
+        private string _androidDiagnostics;
         private Label _platformLabel;
         private Label _authStatusLabel;
         private Label _userLabel;
@@ -1497,11 +1498,16 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             }
             if (_statusSubtext != null)
             {
+                // Signed out: also show what Google checks (signing SHA-1, installer, app id...), so the cause is
+                // visible on the device without logcat. Read once - it goes through JNI and never changes at runtime.
+                if (!isAuth && _androidDiagnostics == null)
+                    _androidDiagnostics = NativeSocial.GetAndroidDiagnostics();
+
                 _statusSubtext.text = isAuth
                     ? "Google Play Games Services signed in and ready."
                     : (string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport)
                         ? "Click Authenticate to sign in with Play Games Services."
-                        : NativeSocial.LastAuthenticationReport);
+                        : NativeSocial.LastAuthenticationReport) + "\n\n" + _androidDiagnostics;
             }
             authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
