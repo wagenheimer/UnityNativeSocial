@@ -11,14 +11,13 @@ using GooglePlayGames.BasicApi;
 using UnityEngine.SocialPlatforms.GameCenter;
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-using Steamworks;
-#endif
-
 namespace Wagenheimer.NativeSocial
 {
     /// <summary>
     /// Platform-native replacement for Unity's deprecated <c>UnityEngine.Social</c> API.
+    /// This file holds the public API; the per-platform backends live in the partial files
+    /// <c>NativeSocial.Android.cs</c>, <c>NativeSocial.AndroidDiagnostics.cs</c>, <c>NativeSocial.Apple.cs</c>,
+    /// <c>NativeSocial.Steam.cs</c> and <c>NativeSocial.Pending.cs</c>.
     /// Dispatches achievement/stat calls directly to Google Play Games (Android),
     /// Game Center (iOS), or Steamworks.NET (Steam desktop builds) based on the
     /// active compile-time platform. Callers use a single, platform-agnostic API and
@@ -126,14 +125,6 @@ namespace Wagenheimer.NativeSocial
         public static bool IsAuthenticated { get; private set; }
 #endif
 
-#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-        /// <summary>
-        /// Whether the Steamworks API has finished initializing (e.g. <c>SteamManager.Initialized</c>).
-        /// Set this once Steam is ready; stat/achievement calls are no-ops until then.
-        /// </summary>
-        public static bool SteamReady { get; set; }
-#endif
-
         // ── Report ────────────────────────────────────────────────────
 
         /// <summary>
@@ -186,140 +177,6 @@ namespace Wagenheimer.NativeSocial
 #endif
         }
 
-#if UNITY_ANDROID
-        /// <summary>Sets the steps of / unlocks the mapped Google Play Games achievement, or queues it while signed out.</summary>
-        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_androidMap"/> to find the GPGS achievement ID.</param>
-        /// <param name="delta">Increment used only when <paramref name="current"/> is not known (0 or negative).</param>
-        /// <param name="current">Absolute progress, sent with the idempotent <c>SetStepsAtLeast</c> so it can be re-sent after a later sign-in. Must use the same unit as the achievement's steps in the Play Console.</param>
-        /// <param name="completed">If true, unlocks the achievement outright regardless of its counter state.</param>
-        private static void ReportAndroid(string locId, int delta, int current, bool completed)
-        {
-            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportAndroid skipped: locId is null."); return; }
-            if (!_androidMap.TryGetValue(locId, out var gpgsId)) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: no GPGS achievement id mapped for this LocID."); return; }
-
-            if (!IsAuthenticated)
-            {
-                QueuePendingAndroidProgress(locId, current, completed);
-                return;
-            }
-
-            SendAndroidProgress(locId, gpgsId, delta, current, completed);
-        }
-#endif
-
-#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
-        /// <summary>Reports the mapped Game Center achievement as a 0-100% completion percentage.</summary>
-        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_iosMap"/> to find the Game Center achievement ID.</param>
-        /// <param name="current">Current progress count (e.g. 5 wildcards collected so far). Combined with <paramref name="total"/> to compute the percentage Game Center expects.</param>
-        /// <param name="total">Progress count needed to fully complete the achievement (e.g. 20 wildcards). Must be &gt; 0 or the report is skipped.</param>
-        /// <param name="completed">If true, reports 100% regardless of <paramref name="current"/>/<paramref name="total"/>.</param>
-        private static void ReportIOS(string locId, int current, int total, bool completed)
-        {
-            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportIOS skipped: locId is null."); return; }
-            if (!_iosMap.TryGetValue(locId, out var gcId)) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: no Game Center achievement id mapped for this LocID."); return; }
-            if (total <= 0) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: total must be > 0 (got {total})."); return; }
-
-            // Not signed in yet (auth still running, player declined, offline...): Game Center would just fail.
-            // Keep the highest progress and deliver it from the next successful Authenticate.
-            if (!Social.localUser.authenticated)
-            {
-                QueuePendingProgress(locId, current, total, completed, "Game Center");
-                return;
-            }
-
-            // Game Center achievements are percentage-based rather than increment-based,
-            // so we derive a percent from current/total instead of using delta directly.
-            double percent = completed
-                ? 100.0
-                : Math.Min((double)current / total * 100.0, 99.0);
-
-            OnLog?.Invoke($"[NativeSocial] iOS ReportProgress('{gcId}') {percent:F1}% for '{locId}'. Game Center shows this as a progress bar until it reaches 100%.");
-            Social.ReportProgress(gcId, percent, success =>
-            {
-                if (success)
-                {
-                    OnLog?.Invoke($"[NativeSocial] iOS ReportProgress SUCCESS for '{gcId}' ({percent:F1}%)");
-                }
-                else
-                {
-                    string err = $"[NativeSocial] iOS ReportProgress FAILED for '{gcId}' ({percent:F1}%). Check if player is authenticated or if '{gcId}' matches the Game Center Achievement ID (vendorIdentifier in App Store Connect).";
-                    Debug.LogWarning(err);
-                    OnLog?.Invoke(err);
-                }
-            });
-        }
-#endif
-
-#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-        /// <summary>Updates the mapped Steam stat/achievement and flushes to Steam only when something changed.</summary>
-        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_steamMap"/> to find the Steam stat/achievement API names.</param>
-        /// <param name="delta">How much to add to the Steam stat (<see cref="SteamEntry.Stat"/>) when <see cref="SteamEntry.SetStatAbsolute"/> is false, e.g. +1 wildcard collected. 0 or negative means "don't touch the stat". Ignored in absolute mode.</param>
-        /// <param name="current">Absolute progress value written to the stat when <see cref="SteamEntry.SetStatAbsolute"/> is true (the legacy "set the counter" model). Mirrors the value iOS already uses.</param>
-        /// <param name="completed">If true, unlocks the Steam achievement (<see cref="SteamEntry.Achievement"/>) when <see cref="SteamEntry.Mode"/> is <see cref="SteamUnlockMode.ExplicitAchievement"/>. Ignored in <see cref="SteamUnlockMode.StatThreshold"/> (Steamworks unlocks it from the stat).</param>
-        private static void ReportSteam(string locId, int delta, int current, bool completed)
-        {
-            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportSteam skipped: locId is null."); return; }
-            if (!SteamReady) { OnLog?.Invoke($"[NativeSocial] ReportSteam('{locId}') skipped: Steamworks is not ready yet."); return; }
-            if (!_steamMap.TryGetValue(locId, out var entry)) { OnLog?.Invoke($"[NativeSocial] ReportSteam('{locId}') skipped: no Steam stat/achievement mapped for this LocID."); return; }
-
-            // Only call StoreStats() (see below) if we actually changed something this call.
-            bool dirty = false;
-
-            if (!string.IsNullOrEmpty(entry.Stat))
-            {
-                if (entry.SetStatAbsolute)
-                {
-                    // Absolute model (Storm Tale 2 legacy): write the exact counter value the game
-                    // holds. Idempotent — skip SetStat when Steam's cached value already matches.
-                    bool known = SteamUserStats.GetStat(entry.Stat, out int statCurrent);
-                    if (!known || statCurrent != current)
-                    {
-                        SteamUserStats.SetStat(entry.Stat, current);
-                        dirty = true;
-                    }
-                }
-                else if (delta > 0 && SteamUserStats.GetStat(entry.Stat, out int statCurrent))
-                {
-                    // Delta model: Steam has no "increment stat by N" call, only "set stat to this
-                    // absolute value", so read the cached value and add delta to it.
-                    SteamUserStats.SetStat(entry.Stat, statCurrent + delta);
-                    dirty = true;
-                }
-            }
-
-            if (entry.Mode == SteamUnlockMode.ExplicitAchievement && completed && !string.IsNullOrEmpty(entry.Achievement))
-            {
-                // GetAchievement's out param tells us whether it's already unlocked — skip
-                // re-unlocking (and marking dirty) if there's nothing to do.
-                if (!SteamUserStats.GetAchievement(entry.Achievement, out bool already) || !already)
-                {
-                    SteamUserStats.SetAchievement(entry.Achievement);
-                    dirty = true;
-                }
-            }
-
-            // SetStat/SetAchievement only update the local cache — StoreStats() is what
-            // actually pushes the change to Steam, so only call it when something changed.
-            if (dirty)
-            {
-                OnLog?.Invoke($"[NativeSocial] Steam stat/achievement updated for '{locId}' and flushed (StoreStats).");
-                SteamUserStats.StoreStats();
-            }
-        }
-
-        /// <summary>
-        /// Flush pending Steam stats/achievements to Steam's servers. Call this whenever the
-        /// game saves — <see cref="ReportSteam"/> and <see cref="SyncCompletedSteam"/> already
-        /// call <c>SteamUserStats.StoreStats()</c> themselves when something changes, so this is
-        /// a safety-net flush for any edge cases (e.g. process termination) rather than the only place it happens.
-        /// </summary>
-        public static void Flush()
-        {
-            if (SteamReady)
-                SteamUserStats.StoreStats();
-        }
-#endif
-
         // ── Sync completed ────────────────────────────────────────────
 
         /// <summary>
@@ -341,64 +198,6 @@ namespace Wagenheimer.NativeSocial
             SyncCompletedSteam(completedLocIds);
 #endif
         }
-
-#if UNITY_ANDROID
-        /// <summary>
-        /// Re-unlocks every already-completed achievement on Google Play Games.
-        /// Needed because local save data can be ahead of the platform (e.g. offline progress,
-        /// account switch, reinstall) — UnlockAchievement is idempotent, so this is safe to repeat.
-        /// </summary>
-        /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_androidMap"/> to find each GPGS achievement ID.</param>
-        private static void SyncCompletedAndroid(IEnumerable<string> completedLocIds)
-        {
-            if (!IsAuthenticated) return;
-            foreach (var locId in completedLocIds)
-            {
-                if (locId == null) continue;
-                if (_androidMap.TryGetValue(locId, out var gpgsId))
-                    PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, ok => LogGpgsCallback("UnlockAchievement", gpgsId, locId, ok));
-            }
-        }
-#endif
-
-#if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
-        /// <summary>Re-reports 100% progress for every already-completed achievement on Game Center.</summary>
-        /// <param name="completedLocIds">LocIDs of achievements to re-report, looked up in <see cref="_iosMap"/> to find each Game Center achievement ID.</param>
-        private static void SyncCompletedIOS(IEnumerable<string> completedLocIds)
-        {
-            foreach (var locId in completedLocIds)
-            {
-                if (locId == null) continue;
-                if (_iosMap.TryGetValue(locId, out var gcId))
-                    Social.ReportProgress(gcId, 100.0, ok => { if (!ok) Debug.LogWarning($"[NativeSocial] Game Center re-sync of '{gcId}' ({locId}) FAILED."); });
-            }
-        }
-#endif
-
-#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
-        /// <summary>Re-unlocks every already-completed achievement on Steam, storing once at the end.</summary>
-        /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_steamMap"/> to find each Steam achievement API name.</param>
-        private static void SyncCompletedSteam(IEnumerable<string> completedLocIds)
-        {
-            if (!SteamReady) return;
-            bool dirty = false;
-            foreach (var locId in completedLocIds)
-            {
-                if (locId == null) continue;
-                if (_steamMap.TryGetValue(locId, out var entry) &&
-                    entry.Mode == SteamUnlockMode.ExplicitAchievement &&
-                    !string.IsNullOrEmpty(entry.Achievement))
-                {
-                    if (!SteamUserStats.GetAchievement(entry.Achievement, out bool already) || !already)
-                    {
-                        SteamUserStats.SetAchievement(entry.Achievement);
-                        dirty = true;
-                    }
-                }
-            }
-            if (dirty) SteamUserStats.StoreStats();
-        }
-#endif
 
         // ── Platform UI ───────────────────────────────────────────────
 
@@ -585,24 +384,6 @@ namespace Wagenheimer.NativeSocial
                 Debug.LogWarning($"[NativeSocial] {service} sign-in FAILED: {detail}");
         }
 
-        /// <summary>
-        /// (macOS) Extra explanation appended to a Game Center failure. A Mac build can only use Game Center when it
-        /// was signed with the com.apple.developer.game-center entitlement, which requires an embedded Mac App Store
-        /// provisioning profile; builds without one (or copies re-signed to run locally) fail with a vague error.
-        /// </summary>
-        internal static string MacGameCenterHint()
-        {
-#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            // On a Mac player Application.dataPath is "<app>/Contents".
-            if (!System.IO.File.Exists(System.IO.Path.Combine(Application.dataPath, "embedded.provisionprofile")))
-                return " This Mac build has no embedded provisioning profile, so it was signed WITHOUT the Game Center entitlement and cannot sign in. " +
-                       "The Forge build log says why (Mac App Store profile missing, or the App ID lacks the Game Center capability).";
-            return " On macOS Game Center only works in the build installed from the App Store / TestFlight; a copy re-signed to run locally has no Game Center entitlement.";
-#else
-            return string.Empty;
-#endif
-        }
-
         /// <summary>A short, actionable explanation for a Google Play Games <c>SignInStatus</c> name.</summary>
         internal static string DescribeSignInFailure(string statusName)
         {
@@ -629,196 +410,6 @@ namespace Wagenheimer.NativeSocial
             }
         }
 
-#if UNITY_ANDROID
-        private const string GpgsAppIdMetaData = "com.google.android.gms.games.APP_ID";
-        private const int PackageManagerGetMetaData = 128;
-        private const int MinimumAppIdDigits = 8;
-
-        /// <summary>
-        /// Null when the built app has a plausible Google Play Games application id in its manifest meta-data; otherwise what is wrong.
-        /// The id is written there by "Window > Google Play Games > Setup > Android setup"; an empty value is the most common reason sign-in never works.
-        /// </summary>
-        internal static string FindAndroidAppIdProblem()
-        {
-#if UNITY_EDITOR
-            return null;
-#else
-            try
-            {
-                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                using (var packageManager = activity.Call<AndroidJavaObject>("getPackageManager"))
-                {
-                    var value = ReadAndroidAppId(packageManager, activity.Call<string>("getPackageName"));
-                    if (string.IsNullOrEmpty(value))
-                        return $"the manifest has no '{GpgsAppIdMetaData}' meta-data. Run Window > Google Play Games > Setup > Android setup and rebuild.";
-
-                    var digits = 0;
-                    foreach (var c in value)
-                        if (char.IsDigit(c)) digits++;
-
-                    return digits >= MinimumAppIdDigits
-                        ? null
-                        : $"the Play Games application id in the manifest is empty or invalid (value '{value}'). Run Window > Google Play Games > Setup > Android setup with your Play Console resources and rebuild.";
-                }
-            }
-            catch (Exception ex)
-            {
-                return "could not read the manifest meta-data: " + ex.Message;
-            }
-#endif
-        }
-
-        private static string ReadAndroidAppId(AndroidJavaObject packageManager, string package)
-        {
-            using (var info = packageManager.Call<AndroidJavaObject>("getApplicationInfo", package, PackageManagerGetMetaData))
-            using (var metaData = info.Get<AndroidJavaObject>("metaData"))
-                return metaData != null ? metaData.Call<string>("getString", GpgsAppIdMetaData) : null;
-        }
-
-        private const int PackageManagerGetSignatures = 64;
-        private const int PackageManagerGetSigningCertificates = 0x08000000;
-        private const int AndroidApiPie = 28;
-        private const int AndroidApiR = 30;
-        private const string PlayStoreInstaller = "com.android.vending";
-
-        /// <summary>
-        /// A Canceled from ManuallyAuthenticate faster than this means Google refused the app before showing any UI
-        /// (nobody taps "cancel" that fast), which points at configuration, not the player.
-        /// </summary>
-        private const float QuickCancelSeconds = 2f;
-
-        private static bool _androidDiagnosticsLogged;
-
-        /// <summary>Once per session, so the identity Google checks sits next to the sign-in result in logcat.</summary>
-        private static void LogAndroidDiagnosticsOnce()
-        {
-            if (_androidDiagnosticsLogged) return;
-            _androidDiagnosticsLogged = true;
-            Debug.Log("[NativeSocial] GPGS diagnostics:\n" + GetAndroidDiagnostics());
-        }
-
-        private static string ReadSigningSha1(AndroidJavaObject packageManager, string package, int sdk)
-        {
-            try
-            {
-                AndroidJavaObject[] signatures;
-                if (sdk >= AndroidApiPie)
-                {
-                    using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, PackageManagerGetSigningCertificates))
-                    using (var signingInfo = info.Get<AndroidJavaObject>("signingInfo"))
-                        signatures = signingInfo.Call<AndroidJavaObject[]>("getApkContentsSigners");
-                }
-                else
-                {
-                    using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, PackageManagerGetSignatures))
-                        signatures = info.Get<AndroidJavaObject[]>("signatures");
-                }
-
-                if (signatures == null || signatures.Length == 0) return "(no signatures returned)";
-
-                var fingerprints = new List<string>();
-                foreach (var signature in signatures)
-                {
-                    using (signature)
-                    {
-                        var raw = signature.Call<sbyte[]>("toByteArray");
-                        var bytes = new byte[raw.Length];
-                        Buffer.BlockCopy(raw, 0, bytes, 0, raw.Length);
-                        using (var sha1 = System.Security.Cryptography.SHA1.Create())
-                            fingerprints.Add(BitConverter.ToString(sha1.ComputeHash(bytes)).Replace('-', ':'));
-                    }
-                }
-                return string.Join(" | ", fingerprints);
-            }
-            catch (Exception ex)
-            {
-                return "(could not read: " + ex.Message + ")";
-            }
-        }
-
-        private static string ReadInstaller(AndroidJavaObject packageManager, string package, int sdk)
-        {
-            try
-            {
-                string installer;
-                if (sdk >= AndroidApiR)
-                {
-                    using (var source = packageManager.Call<AndroidJavaObject>("getInstallSourceInfo", package))
-                        installer = source.Call<string>("getInstallingPackageName");
-                }
-                else
-                {
-                    installer = packageManager.Call<string>("getInstallerPackageName", package);
-                }
-
-                if (installer == PlayStoreInstaller) return installer + " (Google Play: signed with the Play app-signing key)";
-                return (string.IsNullOrEmpty(installer) ? "(none)" : installer) +
-                       " (NOT Google Play: adb/bundletool/sideload, signed with whatever key built it - that key's SHA-1 must be registered too)";
-            }
-            catch (Exception ex)
-            {
-                return "(could not read: " + ex.Message + ")";
-            }
-        }
-
-        private static string ReadVersionName(AndroidJavaObject packageManager, string package)
-        {
-            try
-            {
-                using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, 0))
-                    return info.Get<string>("versionName");
-            }
-            catch (Exception)
-            {
-                return "(not installed or not visible to this app)";
-            }
-        }
-#endif
-
-        /// <summary>
-        /// (Android) What Google checks before letting this install sign in to Play Games: package name, Play Games
-        /// application id, the SHA-1 of the certificate that signed THIS install, who installed it, and the Google Play
-        /// services / Play Games versions. Compare the SHA-1 with Play Console &gt; Play Games Services &gt; Configuration &gt;
-        /// Credentials: an install signed with an unregistered key (adb/bundletool debug key, upload key while only the
-        /// app-signing key is registered...) fails sign-in with Canceled/DeveloperError without showing any UI.
-        /// Returns a short notice on other platforms and in the Editor.
-        /// </summary>
-        public static string GetAndroidDiagnostics()
-        {
-#if UNITY_ANDROID && !UNITY_EDITOR
-            var report = new System.Text.StringBuilder();
-            try
-            {
-                using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
-                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                using (var packageManager = activity.Call<AndroidJavaObject>("getPackageManager"))
-                {
-                    var sdk = version.GetStatic<int>("SDK_INT");
-                    var package = activity.Call<string>("getPackageName");
-                    var appId = ReadAndroidAppId(packageManager, package);
-
-                    report.AppendLine($"  package:               {package}");
-                    report.AppendLine($"  Play Games app id:     {(string.IsNullOrEmpty(appId) ? "(missing)" : appId)}");
-                    report.AppendLine($"  signing cert SHA-1:    {ReadSigningSha1(packageManager, package, sdk)}");
-                    report.AppendLine($"  installer:             {ReadInstaller(packageManager, package, sdk)}");
-                    report.AppendLine($"  Google Play services:  {ReadVersionName(packageManager, "com.google.android.gms")}");
-                    report.AppendLine($"  Google Play Games app: {ReadVersionName(packageManager, "com.google.android.play.games")}");
-                    report.AppendLine($"  device:                {SystemInfo.deviceModel}, Android API {sdk}, app {Application.version}");
-                    report.Append("  -> the SHA-1 above must be listed for this package under Play Console > Play Games Services > Configuration > Credentials.");
-                }
-            }
-            catch (Exception ex)
-            {
-                report.Append("  diagnostics failed: " + ex.Message);
-            }
-            return report.ToString();
-#else
-            return "Android diagnostics are only available on an Android device.";
-#endif
-        }
-
         /// <summary>
         /// Authenticates with Game Center on iOS, or Google Play Games on Android.
         /// On Android, this returns the result of the plugin's automatic sign-in attempt
@@ -826,7 +417,6 @@ namespace Wagenheimer.NativeSocial
         /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
         /// </summary>
         /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
-
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)

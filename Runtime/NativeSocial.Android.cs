@@ -128,6 +128,42 @@ namespace Wagenheimer.NativeSocial
                 if (_androidMap != null && _androidMap.TryGetValue(entry.LocId, out var gpgsId))
                     SendAndroidProgress(entry.LocId, gpgsId, 0, entry.Current, entry.Completed);
             });
+
+        /// <summary>Sets the steps of / unlocks the mapped Google Play Games achievement, or queues it while signed out.</summary>
+        /// <param name="locId">Game-defined achievement key, looked up in <see cref="_androidMap"/> to find the GPGS achievement ID.</param>
+        /// <param name="delta">Increment used only when <paramref name="current"/> is not known (0 or negative).</param>
+        /// <param name="current">Absolute progress, sent with the idempotent <c>SetStepsAtLeast</c> so it can be re-sent after a later sign-in. Must use the same unit as the achievement's steps in the Play Console.</param>
+        /// <param name="completed">If true, unlocks the achievement outright regardless of its counter state.</param>
+        private static void ReportAndroid(string locId, int delta, int current, bool completed)
+        {
+            if (locId == null) { OnLog?.Invoke("[NativeSocial] ReportAndroid skipped: locId is null."); return; }
+            if (!_androidMap.TryGetValue(locId, out var gpgsId)) { OnLog?.Invoke($"[NativeSocial] ReportAndroid('{locId}') skipped: no GPGS achievement id mapped for this LocID."); return; }
+
+            if (!IsAuthenticated)
+            {
+                QueuePendingAndroidProgress(locId, current, completed);
+                return;
+            }
+
+            SendAndroidProgress(locId, gpgsId, delta, current, completed);
+        }
+
+        /// <summary>
+        /// Re-unlocks every already-completed achievement on Google Play Games.
+        /// Needed because local save data can be ahead of the platform (e.g. offline progress,
+        /// account switch, reinstall) — UnlockAchievement is idempotent, so this is safe to repeat.
+        /// </summary>
+        /// <param name="completedLocIds">LocIDs of achievements to re-unlock, looked up in <see cref="_androidMap"/> to find each GPGS achievement ID.</param>
+        private static void SyncCompletedAndroid(IEnumerable<string> completedLocIds)
+        {
+            if (!IsAuthenticated) return;
+            foreach (var locId in completedLocIds)
+            {
+                if (locId == null) continue;
+                if (_androidMap.TryGetValue(locId, out var gpgsId))
+                    PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, ok => LogGpgsCallback("UnlockAchievement", gpgsId, locId, ok));
+            }
+        }
     }
 }
 #endif
