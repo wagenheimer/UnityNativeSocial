@@ -1,5 +1,4 @@
 #if UNITY_ANDROID
-using System;
 using System.Collections.Generic;
 using GooglePlayGames;
 using GooglePlayGames.BasicApi;
@@ -9,32 +8,16 @@ namespace Wagenheimer.NativeSocial
 {
     /// <summary>
     /// Google Play Games plumbing shared by the public API in <c>NativeSocial.cs</c>: one-time activation,
-    /// sign-in bookkeeping, progress that survives being signed out, and re-checking sign-in when the game
-    /// comes back to the foreground.
+    /// sign-in bookkeeping, delivery of progress queued while signed out (<c>NativeSocial.Pending.cs</c>), and
+    /// re-checking sign-in when the game comes back to the foreground.
     /// </summary>
     public static partial class NativeSocial
     {
-        private const string PendingProgressPrefsKey = "NativeSocial.GpgsPendingProgress";
         private const string ManualSignInDeclinedPrefsKey = "NativeSocial.GpgsManualSignInDeclined";
 
         private static bool _gpgsActivated;
         private static bool _signInInProgress;
-        private static Dictionary<string, PendingProgress> _pendingProgress;
         private static readonly HashSet<string> _reportedGpgsFailures = new HashSet<string>();
-
-        [Serializable]
-        private class PendingProgress
-        {
-            public string LocId;
-            public int Steps;
-            public bool Completed;
-        }
-
-        [Serializable]
-        private class PendingProgressList
-        {
-            public List<PendingProgress> Items = new List<PendingProgress>();
-        }
 
         /// <summary>
         /// Activates the Play Games platform once per session (with SDK debug logging) and starts watching for
@@ -136,71 +119,15 @@ namespace Wagenheimer.NativeSocial
             OnLog?.Invoke(message);
         }
 
-        /// <summary>Keeps the highest progress seen while signed out (in PlayerPrefs, so it survives restarts) until the next sign-in.</summary>
-        private static void QueuePendingAndroidProgress(string locId, int steps, bool completed)
-        {
-            var pending = LoadPendingProgress();
-            if (!pending.TryGetValue(locId, out var entry))
-            {
-                entry = new PendingProgress { LocId = locId };
-                pending[locId] = entry;
-            }
+        private static void QueuePendingAndroidProgress(string locId, int steps, bool completed) =>
+            QueuePendingProgress(locId, steps, 0, completed, "Google Play Games");
 
-            var changed = steps > entry.Steps || (completed && !entry.Completed);
-            if (!changed) return;
-
-            entry.Steps = Math.Max(entry.Steps, steps);
-            entry.Completed |= completed;
-            SavePendingProgress(pending);
-            OnLog?.Invoke($"[NativeSocial] GPGS not signed in: queued '{locId}' (steps={entry.Steps}, completed={entry.Completed}) to send after sign-in.");
-        }
-
-        private static void FlushPendingAndroidProgress()
-        {
-            var pending = LoadPendingProgress();
-            if (pending.Count == 0) return;
-
-            Debug.Log($"[NativeSocial] Sending {pending.Count} achievement update(s) queued while signed out of Google Play Games.");
-            foreach (var entry in pending.Values)
+        private static void FlushPendingAndroidProgress() =>
+            FlushPendingProgress("Google Play Games", entry =>
             {
                 if (_androidMap != null && _androidMap.TryGetValue(entry.LocId, out var gpgsId))
-                    SendAndroidProgress(entry.LocId, gpgsId, 0, entry.Steps, entry.Completed);
-            }
-
-            pending.Clear();
-            SavePendingProgress(pending);
-        }
-
-        private static Dictionary<string, PendingProgress> LoadPendingProgress()
-        {
-            if (_pendingProgress != null) return _pendingProgress;
-
-            _pendingProgress = new Dictionary<string, PendingProgress>();
-            var json = PlayerPrefs.GetString(PendingProgressPrefsKey, string.Empty);
-            if (string.IsNullOrEmpty(json)) return _pendingProgress;
-
-            try
-            {
-                var list = JsonUtility.FromJson<PendingProgressList>(json);
-                if (list?.Items != null)
-                    foreach (var item in list.Items)
-                        if (!string.IsNullOrEmpty(item.LocId)) _pendingProgress[item.LocId] = item;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[NativeSocial] Discarding unreadable queued GPGS progress: " + ex.Message);
-            }
-            return _pendingProgress;
-        }
-
-        private static void SavePendingProgress(Dictionary<string, PendingProgress> pending)
-        {
-            if (pending.Count == 0)
-                PlayerPrefs.DeleteKey(PendingProgressPrefsKey);
-            else
-                PlayerPrefs.SetString(PendingProgressPrefsKey, JsonUtility.ToJson(new PendingProgressList { Items = new List<PendingProgress>(pending.Values) }));
-            PlayerPrefs.Save();
-        }
+                    SendAndroidProgress(entry.LocId, gpgsId, 0, entry.Current, entry.Completed);
+            });
     }
 }
 #endif

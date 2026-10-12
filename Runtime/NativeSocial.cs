@@ -219,6 +219,14 @@ namespace Wagenheimer.NativeSocial
             if (!_iosMap.TryGetValue(locId, out var gcId)) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: no Game Center achievement id mapped for this LocID."); return; }
             if (total <= 0) { OnLog?.Invoke($"[NativeSocial] ReportIOS('{locId}') skipped: total must be > 0 (got {total})."); return; }
 
+            // Not signed in yet (auth still running, player declined, offline...): Game Center would just fail.
+            // Keep the highest progress and deliver it from the next successful Authenticate.
+            if (!Social.localUser.authenticated)
+            {
+                QueuePendingProgress(locId, current, total, completed, "Game Center");
+                return;
+            }
+
             // Game Center achievements are percentage-based rather than increment-based,
             // so we derive a percent from current/total instead of using delta directly.
             double percent = completed
@@ -577,6 +585,24 @@ namespace Wagenheimer.NativeSocial
                 Debug.LogWarning($"[NativeSocial] {service} sign-in FAILED: {detail}");
         }
 
+        /// <summary>
+        /// (macOS) Extra explanation appended to a Game Center failure. A Mac build can only use Game Center when it
+        /// was signed with the com.apple.developer.game-center entitlement, which requires an embedded Mac App Store
+        /// provisioning profile; builds without one (or copies re-signed to run locally) fail with a vague error.
+        /// </summary>
+        internal static string MacGameCenterHint()
+        {
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            // On a Mac player Application.dataPath is "<app>/Contents".
+            if (!System.IO.File.Exists(System.IO.Path.Combine(Application.dataPath, "embedded.provisionprofile")))
+                return " This Mac build has no embedded provisioning profile, so it was signed WITHOUT the Game Center entitlement and cannot sign in. " +
+                       "The Forge build log says why (Mac App Store profile missing, or the App ID lacks the Game Center capability).";
+            return " On macOS Game Center only works in the build installed from the App Store / TestFlight; a copy re-signed to run locally has no Game Center entitlement.";
+#else
+            return string.Empty;
+#endif
+        }
+
         /// <summary>A short, actionable explanation for a Google Play Games <c>SignInStatus</c> name.</summary>
         internal static string DescribeSignInFailure(string statusName)
         {
@@ -816,9 +842,14 @@ namespace Wagenheimer.NativeSocial
             // API surface, not leftover code to "clean up"; removing it would break iOS auth entirely.
             Social.localUser.Authenticate((success, error) =>
             {
+                if (success)
+                    FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
                 OnAuthenticated?.Invoke(success);
                 OnLog?.Invoke($"[NativeSocial] Game Center Authenticate: {success}");
-                LogAuthenticationResult("Game Center", success, success ? "signed in" : (string.IsNullOrEmpty(error) ? "no error message from Game Center (is Game Center enabled in Settings and the app set up in App Store Connect?)" : error));
+                var detail = string.IsNullOrEmpty(error)
+                    ? "no error message from Game Center (is Game Center enabled in Settings and the app set up in App Store Connect?)"
+                    : error;
+                LogAuthenticationResult("Game Center", success, success ? "signed in" : detail + MacGameCenterHint());
                 callback?.Invoke(success);
             });
 #elif UNITY_ANDROID

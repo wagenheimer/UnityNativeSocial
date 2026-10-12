@@ -92,7 +92,7 @@ NativeSocial.AutoConnect(enablePlatformSocial: Main.main.IsMobile);
 - Logs a `GPGS diagnostics` block on Android (package, Play Games app id, **SHA-1 of the certificate that signed the install**, installer, Play services versions). Also available as `NativeSocial.GetAndroidDiagnostics()` and in the debug overlay.
 - Re-checks Play Games sign-in (without UI) when the game returns to the foreground.
 
-On Android, achievement progress is sent with `SetStepsAtLeast(current)` (idempotent). Progress reported while signed out is queued in PlayerPrefs and delivered after the next sign-in, so the `current` passed to `Report` must use the same unit as the achievement's steps in the Play Console.
+On Android, achievement progress is sent with `SetStepsAtLeast(current)` (idempotent), so the `current` passed to `Report` must use the same unit as the achievement's steps in the Play Console. On Android **and** Game Center (iOS/macOS), progress reported while signed out is queued in PlayerPrefs (highest value per achievement) and delivered after the next successful sign-in. `NativeSocial.IsReadyToReport` is false only when a `Report` would be dropped (Steam before SteamAPI is ready), so code that tracks "already sent" values should wait for it. On macOS, a failed Game Center sign-in explains whether the build lacks the embedded profile / Game Center entitlement.
 - Connects to Apple Game Center on iOS and Mac App Store.
 - Silently keeps progress local without throwing errors on Big Fish, Steam or generic standalone targets.
 
