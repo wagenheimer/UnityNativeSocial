@@ -354,6 +354,21 @@ Universal in-game UI Toolkit debug panel for testing achievements, authenticatio
 - **Live Event Log**: Real-time console tracking all `Report`, `Authenticate`, and `SubmitScore` calls with timestamps and severity highlights.
 - **Mobile-Friendly**: Live zoom adjustment (`A-` / `A+`) and full-screen maximize (`⛶`) with PlayerPrefs persistence.
 
+## Contributing: compile check before pushing
+
+The CI only bumps the version and tags; it cannot compile the package (no Unity license on the runner). Most of
+the code lives in platform-only `#if` blocks (Google Play Games, Game Center, Steam), so an error in one of them
+used to reach a release unnoticed. Run the check before pushing:
+
+```bash
+Tools~/compile-check.sh "/path/to/a/unity/project/using/this/package"
+```
+
+It compiles `Runtime/` against the real Unity assemblies (Editor install + the project's `Library/ScriptAssemblies`
+for Google Play Games and Steamworks) once per define set: Android, Android+Editor, iOS, macOS, Steam and Windows,
+and exits non-zero listing the `error CS…` lines of any platform that fails. No Unity window is opened. The
+`Tools~` folder is ignored by Unity.
+
 ## License
 
 MIT
