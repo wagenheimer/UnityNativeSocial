@@ -566,13 +566,6 @@ namespace Wagenheimer.NativeSocial
 
         // ── Authentication ────────────────────────────────────────────
 
-        /// <summary>
-        /// Authenticates with Game Center on iOS, or Google Play Games on Android.
-        /// On Android, this returns the result of the plugin's automatic sign-in attempt
-        /// (Play Games Services v11+ tries to sign in automatically when the app starts).
-        /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
-        /// </summary>
-        /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
         /// <summary>The outcome of the last sign-in attempt in plain words (service, success or the failure reason), for diagnostics UIs. Null before the first attempt.</summary>
         public static string LastAuthenticationReport { get; private set; }
 
@@ -632,10 +625,8 @@ namespace Wagenheimer.NativeSocial
                 using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
                 using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
                 using (var packageManager = activity.Call<AndroidJavaObject>("getPackageManager"))
-                using (var info = packageManager.Call<AndroidJavaObject>("getApplicationInfo", activity.Call<string>("getPackageName"), PackageManagerGetMetaData))
-                using (var metaData = info.Get<AndroidJavaObject>("metaData"))
                 {
-                    var value = metaData != null ? metaData.Call<string>("getString", GpgsAppIdMetaData) : null;
+                    var value = ReadAndroidAppId(packageManager, activity.Call<string>("getPackageName"));
                     if (string.IsNullOrEmpty(value))
                         return $"the manifest has no '{GpgsAppIdMetaData}' meta-data. Run Window > Google Play Games > Setup > Android setup and rebuild.";
 
@@ -654,7 +645,164 @@ namespace Wagenheimer.NativeSocial
             }
 #endif
         }
+
+        private static string ReadAndroidAppId(AndroidJavaObject packageManager, string package)
+        {
+            using (var info = packageManager.Call<AndroidJavaObject>("getApplicationInfo", package, PackageManagerGetMetaData))
+            using (var metaData = info.Get<AndroidJavaObject>("metaData"))
+                return metaData != null ? metaData.Call<string>("getString", GpgsAppIdMetaData) : null;
+        }
+
+        private const int PackageManagerGetSignatures = 64;
+        private const int PackageManagerGetSigningCertificates = 0x08000000;
+        private const int AndroidApiPie = 28;
+        private const int AndroidApiR = 30;
+        private const string PlayStoreInstaller = "com.android.vending";
+
+        /// <summary>
+        /// A Canceled from ManuallyAuthenticate faster than this means Google refused the app before showing any UI
+        /// (nobody taps "cancel" that fast), which points at configuration, not the player.
+        /// </summary>
+        private const float QuickCancelSeconds = 2f;
+
+        private static bool _androidDiagnosticsLogged;
+
+        /// <summary>Once per session, so the identity Google checks sits next to the sign-in result in logcat.</summary>
+        private static void LogAndroidDiagnosticsOnce()
+        {
+            if (_androidDiagnosticsLogged) return;
+            _androidDiagnosticsLogged = true;
+            Debug.Log("[NativeSocial] GPGS diagnostics:\n" + GetAndroidDiagnostics());
+        }
+
+        private static string ReadSigningSha1(AndroidJavaObject packageManager, string package, int sdk)
+        {
+            try
+            {
+                AndroidJavaObject[] signatures;
+                if (sdk >= AndroidApiPie)
+                {
+                    using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, PackageManagerGetSigningCertificates))
+                    using (var signingInfo = info.Get<AndroidJavaObject>("signingInfo"))
+                        signatures = signingInfo.Call<AndroidJavaObject[]>("getApkContentsSigners");
+                }
+                else
+                {
+                    using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, PackageManagerGetSignatures))
+                        signatures = info.Get<AndroidJavaObject[]>("signatures");
+                }
+
+                if (signatures == null || signatures.Length == 0) return "(no signatures returned)";
+
+                var fingerprints = new List<string>();
+                foreach (var signature in signatures)
+                {
+                    using (signature)
+                    {
+                        var raw = signature.Call<sbyte[]>("toByteArray");
+                        var bytes = new byte[raw.Length];
+                        Buffer.BlockCopy(raw, 0, bytes, 0, raw.Length);
+                        using (var sha1 = System.Security.Cryptography.SHA1.Create())
+                            fingerprints.Add(BitConverter.ToString(sha1.ComputeHash(bytes)).Replace('-', ':'));
+                    }
+                }
+                return string.Join(" | ", fingerprints);
+            }
+            catch (Exception ex)
+            {
+                return "(could not read: " + ex.Message + ")";
+            }
+        }
+
+        private static string ReadInstaller(AndroidJavaObject packageManager, string package, int sdk)
+        {
+            try
+            {
+                string installer;
+                if (sdk >= AndroidApiR)
+                {
+                    using (var source = packageManager.Call<AndroidJavaObject>("getInstallSourceInfo", package))
+                        installer = source.Call<string>("getInstallingPackageName");
+                }
+                else
+                {
+                    installer = packageManager.Call<string>("getInstallerPackageName", package);
+                }
+
+                if (installer == PlayStoreInstaller) return installer + " (Google Play: signed with the Play app-signing key)";
+                return (string.IsNullOrEmpty(installer) ? "(none)" : installer) +
+                       " (NOT Google Play: adb/bundletool/sideload, signed with whatever key built it - that key's SHA-1 must be registered too)";
+            }
+            catch (Exception ex)
+            {
+                return "(could not read: " + ex.Message + ")";
+            }
+        }
+
+        private static string ReadVersionName(AndroidJavaObject packageManager, string package)
+        {
+            try
+            {
+                using (var info = packageManager.Call<AndroidJavaObject>("getPackageInfo", package, 0))
+                    return info.Get<string>("versionName");
+            }
+            catch (Exception)
+            {
+                return "(not installed or not visible to this app)";
+            }
+        }
 #endif
+
+        /// <summary>
+        /// (Android) What Google checks before letting this install sign in to Play Games: package name, Play Games
+        /// application id, the SHA-1 of the certificate that signed THIS install, who installed it, and the Google Play
+        /// services / Play Games versions. Compare the SHA-1 with Play Console &gt; Play Games Services &gt; Configuration &gt;
+        /// Credentials: an install signed with an unregistered key (adb/bundletool debug key, upload key while only the
+        /// app-signing key is registered...) fails sign-in with Canceled/DeveloperError without showing any UI.
+        /// Returns a short notice on other platforms and in the Editor.
+        /// </summary>
+        public static string GetAndroidDiagnostics()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            var report = new System.Text.StringBuilder();
+            try
+            {
+                using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
+                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var packageManager = activity.Call<AndroidJavaObject>("getPackageManager"))
+                {
+                    var sdk = version.GetStatic<int>("SDK_INT");
+                    var package = activity.Call<string>("getPackageName");
+                    var appId = ReadAndroidAppId(packageManager, package);
+
+                    report.AppendLine($"  package:               {package}");
+                    report.AppendLine($"  Play Games app id:     {(string.IsNullOrEmpty(appId) ? "(missing)" : appId)}");
+                    report.AppendLine($"  signing cert SHA-1:    {ReadSigningSha1(packageManager, package, sdk)}");
+                    report.AppendLine($"  installer:             {ReadInstaller(packageManager, package, sdk)}");
+                    report.AppendLine($"  Google Play services:  {ReadVersionName(packageManager, "com.google.android.gms")}");
+                    report.AppendLine($"  Google Play Games app: {ReadVersionName(packageManager, "com.google.android.play.games")}");
+                    report.AppendLine($"  device:                {SystemInfo.deviceModel}, Android API {sdk}, app {Application.version}");
+                    report.Append("  -> the SHA-1 above must be listed for this package under Play Console > Play Games Services > Configuration > Credentials.");
+                }
+            }
+            catch (Exception ex)
+            {
+                report.Append("  diagnostics failed: " + ex.Message);
+            }
+            return report.ToString();
+#else
+            return "Android diagnostics are only available on an Android device.";
+#endif
+        }
+
+        /// <summary>
+        /// Authenticates with Game Center on iOS, or Google Play Games on Android.
+        /// On Android, this returns the result of the plugin's automatic sign-in attempt
+        /// (Play Games Services v11+ tries to sign in automatically when the app starts).
+        /// On Steam desktop builds it is a no-op, since Steamworks authenticates via SteamAPI.Init().
+        /// </summary>
+        /// <param name="callback">Invoked with true on successful authentication, false on failure or on any non-supported platform.</param>
 
         public static void Authenticate(Action<bool> callback)
         {
@@ -685,6 +833,7 @@ namespace Wagenheimer.NativeSocial
             var configurationProblem = FindAndroidAppIdProblem();
             if (configurationProblem != null)
                 Debug.LogError("[NativeSocial] Google Play Games is not configured: " + configurationProblem);
+            LogAndroidDiagnosticsOnce();
 
             Debug.Log($"[NativeSocial] Iniciando autenticação automática GPGS (DebugLogEnabled={PlayGamesPlatform.DebugLogEnabled})...");
             PlayGamesPlatform.Instance.Authenticate(status =>
@@ -716,13 +865,23 @@ namespace Wagenheimer.NativeSocial
             PlayGamesPlatform.DebugLogEnabled = true;
             PlayGamesPlatform.Activate();
 
+            LogAndroidDiagnosticsOnce();
+
             Debug.Log("[NativeSocial] Iniciando GPGS ManuallyAuthenticate...");
+            var startedAt = Time.realtimeSinceStartup;
             PlayGamesPlatform.Instance.ManuallyAuthenticate(status =>
             {
+                var elapsed = Time.realtimeSinceStartup - startedAt;
                 var success = status == SignInStatus.Success;
                 if (success) IsAuthenticated = true;
                 OnAuthenticated?.Invoke(success);
-                Debug.Log($"[NativeSocial] GPGS ManuallyAuthenticate callback: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
+                Debug.Log($"[NativeSocial] GPGS ManuallyAuthenticate callback after {elapsed * 1000f:0} ms: status={status}, success={success}, localUser={Social.localUser.userName} ({Social.localUser.id})");
+
+                if (!success && status == SignInStatus.Canceled && elapsed < QuickCancelSeconds)
+                    Debug.LogError($"[NativeSocial] GPGS manual sign-in was Canceled after only {elapsed * 1000f:0} ms - too fast for a player to cancel. " +
+                                   "Google rejected this install before showing the sign-in UI: almost always the signing SHA-1 below is not registered for this package " +
+                                   "in Play Console > Play Games Services > Credentials, or the device account is not a tester while Play Games Services is unpublished.\n" +
+                                   GetAndroidDiagnostics());
                 OnLog?.Invoke($"[NativeSocial] GPGS ManuallyAuthenticate: {status} ({success})");
                 LogAuthenticationResult("Google Play Games (Manual)", success, success ? "signed in" : $"{status}. {DescribeSignInFailure(status.ToString())}");
                 callback?.Invoke(success);
