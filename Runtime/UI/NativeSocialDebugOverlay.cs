@@ -774,11 +774,34 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 NativeSocial.AuthenticateManually(success =>
                 {
                     AddLog($"AuthenticateManually result: {success}", success ? LogType.Log : LogType.Warning);
+                    if (!string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport))
+                        AddLog(NativeSocial.LastAuthenticationReport, success ? LogType.Log : LogType.Warning);
                     RefreshDiagnostics();
                 });
             });
             _manualAuthButton = manualAuthBtn;
             row1.Add(manualAuthBtn);
+
+            var consentBtn = CreateActionButton("Request Consent", () =>
+            {
+                AddLog("Calling NativeSocial.RequestConsent()...", LogType.Log);
+                NativeSocial.RequestConsent(success =>
+                {
+                    AddLog($"RequestConsent result: {success}", success ? LogType.Log : LogType.Warning);
+                    if (!string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport))
+                        AddLog(NativeSocial.LastAuthenticationReport, success ? LogType.Log : LogType.Warning);
+                    RefreshDiagnostics();
+                });
+            });
+            row1.Add(consentBtn);
+
+            var resetDeclinedBtn = CreateActionButton("Reset Declined", () =>
+            {
+                NativeSocial.ResetManualSignInDeclined();
+                AddLog("Manual sign-in declined flag cleared; next startup will prompt again.", LogType.Log);
+                RefreshDiagnostics();
+            });
+            row1.Add(resetDeclinedBtn);
 
 #if UNITY_ANDROID
             // Reads the built manifest's Play Games application id: an empty one makes every sign-in fail.
@@ -787,6 +810,13 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 var problem = NativeSocial.FindAndroidAppIdProblem();
                 AddLog(problem == null ? "Play Games application id is present in the manifest." : "Not configured: " + problem,
                     problem == null ? LogType.Log : LogType.Error);
+            }));
+
+            row1.Add(CreateActionButton("Copy Diag", () =>
+            {
+                var diag = NativeSocial.GetAndroidDiagnostics();
+                GUIUtility.systemCopyBuffer = diag;
+                AddLog("Android diagnostics copied to clipboard.", LogType.Log);
             }));
 #endif
             card.Add(row1);
@@ -1488,7 +1518,10 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             bool isAuth = NativeSocial.IsAuthenticated;
             if (_authStatusLabel != null)
             {
-                _authStatusLabel.text = isAuth ? "Authenticated (GPGS)" : "Signed Out";
+                var statusText = isAuth ? "Authenticated (GPGS)" : "Signed Out";
+                if (!isAuth && !string.IsNullOrEmpty(NativeSocial.LastSignInStatus))
+                    statusText += $" (last: {NativeSocial.LastSignInStatus})";
+                _authStatusLabel.text = statusText;
                 _authStatusLabel.style.color = isAuth ? ColorAccentGreen : ColorAccentAmber;
             }
             if (_statusBanner != null)
