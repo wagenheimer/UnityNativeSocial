@@ -1,6 +1,6 @@
 {
   "name": "com.wagenheimer.nativesocial",
-  "version": "1.37.0",
+  "version": "1.38.0",
   "displayName": "Native Social",
   "description": "Platform-native social API wrapper for Android (Google Play Games), Apple (Game Center on iOS and macOS) and Steam. Replaces Unity's deprecated Social class with direct platform calls.",
   "unity": "2021.3",
