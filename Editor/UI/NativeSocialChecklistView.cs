@@ -82,9 +82,29 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             (CategoryAndroid, "android_ids", "[In-Project] GooglePlayId filled in AchievementTierMap",
                 "Every trophy tier shipping on Android has its alphanumeric ID configured (from Play Console)."),
             (CategoryAndroid, "android_oauth", "[Store Console] GPGS Android Setup wizard completed",
-                "Run Window > Google Play Games > Setup > Android setup, paste the Web App Client ID from Play Console, and commit the generated Android resources."),
-            (CategoryAndroid, "android_console_achievements", "[Store Console] 54 achievements created in Play Console",
-                "Create and publish achievements under Play Console > Grow > Play Games Services > Configuration > Achievements."),
+                "Run Window > Google Play Games > Setup > Android setup and import this game's Android resources. Verify the numeric manifest APP_ID. Basic sign-in uses Android OAuth clients; a Web/game-server client is only for optional backend auth-code features. Never paste an Android client ID into a Web Client ID field."),
+            (CategoryAndroid, "android_cert_inventory", "REQUIRED 1/10 - Inventory STORE, UPLOAD and TEST signatures",
+                "Record exact package + SHA-1 for every installed build. These are three roles, not necessarily three keys. Reuse a matching client when package AND SHA-1 are identical. A Development Build checkbox or a key filename does not identify the certificate."),
+            (CategoryAndroid, "android_cert_store", "REQUIRED 2/10 - Read STORE app signing SHA-1",
+                "Play Console > your app > Protected with Play > Play Store protection > Manage Play app signing > App signing key certificate > SHA-1 certificate fingerprint. This signs Play-distributed installs, including release-track tests. Do not use the Upload key certificate section for the Store client."),
+            (CategoryAndroid, "android_cert_upload", "REQUIRED 3/10 - Read UPLOAD SHA-1 and identify direct installs",
+                "On the same signing page, read Upload key certificate > SHA-1. Register/link this certificate if directly installing APKs signed with it. Google verifies uploads with this key but signs Store APKs with the app signing key. Do not generate or reset keys for OAuth setup."),
+            (CategoryAndroid, "android_cert_test", "REQUIRED 4/10 - Read actual TEST/local APK SHA-1",
+                "Read NativeSocial.GetAndroidDiagnostics(), the runtime debug overlay, apksigner verify --print-certs YOUR.apk, or keytool for the actual debug/custom keystore. Local Unity/ADB installs can differ from BOTH upload and Store. Register each distinct package + SHA-1. Use SHA-1, not SHA-256 from Digital Asset Links."),
+            (CategoryAndroid, "android_cloud_clients", "REQUIRED 5/10 - Create/reuse EACH Android client in GOOGLE CLOUD",
+                "Select the SAME Cloud project linked to Play Games. Google Auth Platform > Clients > Create client > Android (older UI: APIs & Services > Credentials > Create credentials > OAuth client ID). Enter descriptive role name, exact package and role-specific SHA-1. Repeat for every distinct STORE/UPLOAD/TEST combination; preserve existing clients."),
+            (CategoryAndroid, "android_play_link_clients", "REQUIRED 6/10 - Link EACH client in PLAY GAMES, not only Cloud",
+                "Play Console > Grow users > Play Games Services > Setup and management > Configuration > Credentials > Add credential > Android. Select the matching OAuth client; Refresh OAuth clients if missing. Compare Application ID, package and full fingerprint, then save. Repeat for EVERY distinct signature. Creating clients only in Cloud is INCOMPLETE."),
+            (CategoryAndroid, "android_play_testers", "REQUIRED 7/10 - Authorize the actual device account",
+                "Play Games Services > Setup and management > Testers: add the Google account selected for this game in the Google Play Games app, or explicitly enable the intended release track here. Console ownership/license testing alone is not proof. If Cloud OAuth audience is Testing, configure its test users separately too."),
+            (CategoryAndroid, "android_play_publish", "REQUIRED 8/10 - Review pending Play Games publication",
+                "Play Games Services > Setup and management > Publishing: review and publish intended credential/configuration changes when ready. An old Published credential does not prove the new ones are published. Check new-install availability settings. App release, Play Games publication and OAuth consent audience are separate. Allow server propagation before retrying."),
+            (CategoryAndroid, "android_test_both_sources", "REQUIRED 9/10 - Verify direct install AND Play Store install",
+                "Sign in, open achievements and report progress in both a local APK and a Play release-track install. Compare diagnostics against the certificate for each source. Internal App Sharing can use a separate certificate; signing-key upgrades can add Store keys. A green local audit cannot validate remote credentials."),
+            (CategoryAndroid, "android_auth_fresh_logs", "REQUIRED 10/10 - Check fresh native errors and manual retry",
+                "Canceled does not prove user cancellation: inspect PlayGamesServices[SignInAuthenticator] for DEVELOPER_ERROR at the same timestamp. Compare its package, Cert SHA1 fingerprint and App ID from manifest. If startup remembers a dismissal, tap the achievements button wired to NativeSocial.OpenAchievementsUI for a fresh manual attempt. Do not wipe progress. Remote-only credential changes normally need no rebuild."),
+            (CategoryAndroid, "android_console_achievements", "[Store Console] All game achievements created in Play Console",
+                "Create the game's achievements in Play Games Services > Achievements, then review/publish the intended changes. Achievement count depends on the game."),
             (CategoryAndroid, "android_auth", "[In-Project] Sign-in called at startup (Authenticate / AuthenticateManually)",
                 "Call NativeSocial.Authenticate(...) on startup. If auto-sign-in fails, offer a manual sign-in button that calls NativeSocial.AuthenticateManually(...)."),
             (CategoryAndroid, "android_ui", "[Best Practice] Achievements button in UI (ShowAchievementsUI)",
@@ -133,7 +153,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private void BuildUI()
         {
             var headerCard = NativeSocialUIStyle.CreateCard("📋 Release & Setup Checklist",
-                "Step-by-step checklist to guarantee 100% working achievements across Steam, Android and iOS. Combines live project detection with store-console instructions.");
+                "Project checks plus manual console and device verification for Steam, Android and iOS. Checked items do not automatically validate remote credentials.");
 
             var topRow = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.SpaceBetween, alignItems = Align.Center, marginBottom = 4 } };
             _progressLabel = new Label();
@@ -159,6 +179,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
 
             Root.Add(headerCard);
 
+            Root.Add(CreateAndroidCredentialsCard());
             Root.Add(CreateHowItWorksCard());
 
             _contentBox = new VisualElement();
@@ -200,6 +221,26 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             UpdateProgress();
+        }
+
+        private static VisualElement CreateAndroidCredentialsCard()
+        {
+            var card = NativeSocialUIStyle.CreateCard("ANDROID SIGN-IN: CLOUD + PLAY GAMES",
+                "Complete all ten Android credential checks below before testing or shipping.");
+            card.Add(new HelpBox(
+                "REQUIRED: STORE app signing, UPLOAD and TEST/local builds can use DIFFERENT certificates. " +
+                "For EVERY distinct package + SHA-1: create/reuse an ANDROID OAuth client in the linked GOOGLE CLOUD project, " +
+                "then ADD AND LINK its Android credential in GOOGLE PLAY GAMES. Creating it in only one console is incomplete.",
+                HelpBoxMessageType.Warning));
+            card.Add(NativeSocialUIStyle.CreateBulletPoint(
+                "STORE certificate: Protected with Play > Play Store protection > Manage Play app signing > App signing key certificate. Upload key certificate is a separate section."));
+            card.Add(NativeSocialUIStyle.CreateBulletPoint(
+                "Then verify the device's Play Games tester account, pending Play Games publication and a fresh manual sign-in. Three roles can share a key: do not duplicate matching package/SHA-1 clients."));
+            card.Add(NativeSocialUIStyle.CreateButton("Open complete certificate setup guide", () =>
+                Application.OpenURL("https://github.com/wagenheimer/UnityNativeSocial/blob/master/docs/ANDROID_SIGN_IN_SETUP.md")));
+            card.Add(NativeSocialUIStyle.CreateButton("Open Google Play Games setup documentation", () =>
+                Application.OpenURL("https://developer.android.com/games/pgs/console/setup")));
+            return card;
         }
 
         private static VisualElement CreateHowItWorksCard()

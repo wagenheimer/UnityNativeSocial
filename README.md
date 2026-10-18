@@ -30,6 +30,22 @@ https://github.com/playgameservices/play-games-plugin-for-unity.git?path=Assets/
 > `Assets/GooglePlayGames`, which are **not** a resolvable package — the version define never fires and
 > every Android call compiles out silently. The one-click installer detects that layout and migrates it.
 
+## ANDROID SIGN-IN: certificates, Google Cloud AND Play Games are required
+
+> **Do not stop after creating an OAuth client in Google Cloud. Every distinct package + signing SHA-1 used by an installed build needs an Android OAuth client in the SAME Cloud project AND a linked Android credential in Play Games Services. Store signing, upload signing and local testing can use THREE DIFFERENT certificates.**
+>
+> **Saving credentials is not the final step:** configure tester access, review/publish pending Play Games changes, then verify both a direct install and a Google Play install. A green Unity Setup Audit cannot verify your remote credentials.
+
+Read the complete [Android sign-in setup and troubleshooting guide](docs/ANDROID_SIGN_IN_SETUP.md) before testing. The same workflow is in **Tools > Wagenheimer > Native Social > Dashboard > Checklist**, with separate checks for each certificate and each console.
+
+| Build/signature origin | Where to find SHA-1 | Register in Cloud and link in Play Games? |
+|---|---|---|
+| **STORE: Google Play app signing** | Play Console > your app > **Protected with Play > Play Store protection > Manage Play app signing > App signing key certificate** | **Yes**, for Play-distributed installs, including test tracks |
+| **UPLOAD: your upload keystore** | Same page > **Upload key certificate**, or `keytool -list -v -keystore "YOUR_KEYSTORE" -alias "YOUR_ALIAS"` | Yes **if you directly install builds signed with this key**; uploading an AAB alone does not make this the Store signature |
+| **TEST: local/debug/custom development key** | NativeSocial Android diagnostics / installed APK certificate, or the actual debug/custom keystore | **Yes**, for each distinct local signing key you test |
+
+**Three roles do not always mean three clients:** reuse an existing linked client when both package and SHA-1 match. Never infer the certificate from a key's filename, a credential's name, or the Development Build checkbox. Preserve existing credentials; add missing certificate combinations instead of replacing a working Store credential. See the guide for key upgrades and additional signing keys.
+
 ## Installation
 
 ### Via Unity Package Manager (Git URL)

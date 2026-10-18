@@ -116,3 +116,18 @@ UPM package. Repo root = package root, installed via git URL, no wrapper Unity p
 
 ## UI Toolkit: leading-icon text
 Never put an emoji/symbol inline at the start of a `Button.text` (or a lone `Label`) — on Windows the fallback glyph draws wider than it measures and the following text overlaps the icon. Use `NativeSocialUIStyle.ApplyIconText(button, text)` (and `CreateIconLabel` for title labels) so the icon gets its own reserved box.
+
+
+## REQUIRED: Android certificates and remote sign-in setup
+
+Read [docs/ANDROID_SIGN_IN_SETUP.md](docs/ANDROID_SIGN_IN_SETUP.md) before diagnosing Android sign-in or changing setup instructions. Keep that guide, README and `Editor/UI/NativeSocialChecklistView.cs` consistent.
+
+- Inventory STORE app signing, UPLOAD and TEST/local certificates. Register every distinct **package + SHA-1** in the linked Cloud project AND link each Android OAuth client in Play Games Configuration. Three roles can share keys; do not demand exactly three clients or create duplicates.
+- Current Store certificate path: app > **Protected with Play > Play Store protection > Manage Play app signing > App signing key certificate**. Upload key certificate is a different section. Verify menu labels against current official docs; do not keep sending users to the retired App integrity page.
+- Never infer a certificate from a name, Development Build flag, a Published badge or the signing filename. Inspect the installed build diagnostics/native log. Do not generate/reset keys, replace working credentials or wipe game/Play Services data to fix OAuth registration.
+- Cloud client creation alone is incomplete. Verify Play Games credential linkage, exact package/fingerprint/Application ID, tester account, Google Auth Platform testing audience when applicable, pending Play Games publication and propagation. Do not claim the remote setup is correct from local audit checks.
+- Basic Android sign-in uses Android clients. A Web/game-server client is only for intentional backend server-auth-code integration; never require it for basic authentication or confuse it with the numeric manifest APP_ID.
+- Unity `Canceled` can hide native `DEVELOPER_ERROR`. Compare native logs at the same timestamp. If startup remembered a dismissal, use `OpenAchievementsUI` for a user-triggered retry; do not erase progress.
+- Test a direct install AND a Play release-track install. Internal App Sharing can have its own certificate; signing-key upgrades may require additional clients. Do not hardcode this game's fingerprints/project IDs into reusable package defaults.
+- CLI IAM/IAP OAuth commands are not Android OAuth client creation. State tool/access limits accurately. Never log private keys, passwords, access tokens or client secrets.
+- Server-only credential changes normally need no new APK; manifest/package/signature/SDK changes do. Keep release/version automation unchanged for documentation work.
