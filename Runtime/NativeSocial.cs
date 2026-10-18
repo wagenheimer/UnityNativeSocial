@@ -373,6 +373,9 @@ namespace Wagenheimer.NativeSocial
         /// <summary>The outcome of the last sign-in attempt in plain words (service, success or the failure reason), for diagnostics UIs. Null before the first attempt.</summary>
         public static string LastAuthenticationReport { get; private set; }
 
+        /// <summary>(Android) The raw SignInStatus name of the last automatic sign-in attempt (e.g. "Success", "Canceled", "NotAuthenticated", "DeveloperError"). Null on non-Android or before the first attempt.</summary>
+        public static string LastSignInStatus { get; private set; }
+
         /// <summary>Always visible in logcat / the Console (not only through <see cref="OnLog"/>): authentication failures are otherwise silent.</summary>
         private static void LogAuthenticationResult(string service, bool success, string detail)
         {
@@ -460,6 +463,7 @@ namespace Wagenheimer.NativeSocial
             PlayGamesPlatform.Instance.Authenticate(status =>
             {
                 _signInInProgress = false;
+                LastSignInStatus = status.ToString();
                 var success = status == SignInStatus.Success;
                 HandleGpgsSignInResult(success);
                 OnAuthenticated?.Invoke(success);
@@ -516,6 +520,7 @@ namespace Wagenheimer.NativeSocial
             PlayGamesPlatform.Instance.ManuallyAuthenticate(status =>
             {
                 _signInInProgress = false;
+                LastSignInStatus = status.ToString();
                 var elapsed = Time.realtimeSinceStartup - startedAt;
                 var success = status == SignInStatus.Success;
                 HandleGpgsSignInResult(success);
@@ -593,19 +598,26 @@ namespace Wagenheimer.NativeSocial
                 else if (PlayerDeclinedManualSignIn)
                 {
                     // Google's guidance: don't push the sign-in UI at every launch on a player who said no.
-                    Debug.Log($"[NativeSocial] GPGS auto sign-in did not succeed ({LastAuthenticationReport}) and the player dismissed the sign-in screen before: " +
-                              "not prompting at startup. NativeSocial.OpenAchievementsUI() still offers sign-in from the achievements button.");
+                    Debug.Log($"[NativeSocial] GPGS auto sign-in did not succeed (status={LastSignInStatus}, report={LastAuthenticationReport}) and the player dismissed the sign-in screen before: " +
+                              "not prompting at startup. NativeSocial.OpenAchievementsUI() still offers sign-in from the achievements button. " +
+                              "Call NativeSocial.ResetManualSignInDeclined() to re-enable the prompt.");
                     onComplete?.Invoke(false);
                 }
                 else
                 {
-                    Debug.LogWarning($"[NativeSocial] GPGS auto sign-in did not succeed ({LastAuthenticationReport}). Retrying with AuthenticateManually...");
+                    // Automatic sign-in failed: try the manual flow, which shows the profile-creation UI
+                    // and the OAuth consent screen for the scopes this game needs (games_lite, drive.appdata).
+                    // This covers the common "missing consent" case without game code having to call RequestConsent.
+                    Debug.LogWarning($"[NativeSocial] GPGS auto sign-in did not succeed (status={LastSignInStatus}, report={LastAuthenticationReport}). " +
+                                     "Retrying with AuthenticateManually to show profile-creation + OAuth consent UI...");
                     AuthenticateManually(manualSuccess =>
                     {
                         if (manualSuccess)
                             Debug.Log($"[NativeSocial] GPGS manual authentication: Success (User: '{Social.localUser.userName}', ID: '{Social.localUser.id}').");
                         else
-                            Debug.LogWarning($"[NativeSocial] GPGS manual authentication: Failed. Report: {LastAuthenticationReport}");
+                            Debug.LogWarning($"[NativeSocial] GPGS manual authentication: Failed (status={LastSignInStatus}, report={LastAuthenticationReport}). " +
+                                             "Likely remote config: unregistered SHA-1, missing tester access, unpublished Play Games changes, or missing consent. " +
+                                             "Run NativeSocial.GetAndroidDiagnostics() and check adb logcat.");
                         onComplete?.Invoke(manualSuccess);
                     });
                 }
