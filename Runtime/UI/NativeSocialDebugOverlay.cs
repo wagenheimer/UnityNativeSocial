@@ -839,6 +839,17 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             });
             row1.Add(copyLogcatBtn);
 
+            var copySnippetBtn = CreateActionButton("Copy Integration Snippet", () =>
+            {
+                GUIUtility.systemCopyBuffer =
+                    "NativeSocial.Initialize(androidMap: tierMap.BuildAndroidMap(), iosMap: tierMap.BuildIosMap(), steamMap: tierMap.BuildSteamMap());\n" +
+                    "NativeSocial.AutoConnect(enablePlatformSocial: Main.main.IsMobile);\n" +
+                    "// Achievements button:\n" +
+                    "NativeSocial.OpenAchievementsUI((opened, err) => { if (!opened) Debug.LogWarning(err); });";
+                AddLog("Integration snippet copied to clipboard.", LogType.Log);
+            });
+            row1.Add(copySnippetBtn);
+
 #if UNITY_ANDROID
             // Reads the built manifest's Play Games application id: an empty one makes every sign-in fail.
             row1.Add(CreateActionButton("Check Config", () =>
