@@ -476,6 +476,29 @@ namespace Wagenheimer.NativeSocial
         }
 
         /// <summary>
+        /// (Android) Clears the "player dismissed the sign-in UI" flag remembered by <see cref="AutoConnect"/>,
+        /// so the next startup / <see cref="Authenticate"/> attempt prompts again. Use this after the user
+        /// fixes a configuration problem or explicitly asks to retry, instead of wiping game data.
+        /// </summary>
+        public static void ResetManualSignInDeclined()
+        {
+#if UNITY_ANDROID
+            PlayerPrefs.DeleteKey(ManualSignInDeclinedPrefsKey);
+            PlayerPrefs.Save();
+            OnLog?.Invoke("[NativeSocial] Reset manual sign-in declined flag: next startup will prompt again.");
+#endif
+        }
+
+        /// <summary>
+        /// (Android) Requests the Google Play Games sign-in UI, including the OAuth consent screen for the
+        /// scopes this game needs (games_lite, drive.appdata). Use this when automatic sign-in returns
+        /// SignInStatus.NotAuthenticated / UiSignInRequired / consent-required, or after a configuration fix.
+        /// This is the same flow as <see cref="AuthenticateManually"/>; kept as a clearly-named entry point
+        /// so game code and AI agents can find "how to show the missing consent".
+        /// </summary>
+        public static void RequestConsent(Action<bool> callback) => AuthenticateManually(callback);
+
+        /// <summary>
         /// (Android) Manually requests sign-in with Play Games Services, showing the profile-creation
         /// UI when the player has no Play Games Services profile yet. Use this as the retry path when
         /// <see cref="Authenticate"/> fails — GPGS v2 no longer triggers sign-in UI from the automatic

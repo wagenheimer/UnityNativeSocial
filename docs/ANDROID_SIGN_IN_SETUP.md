@@ -79,6 +79,7 @@ Do not create a second Play Games game/project just for a different certificate.
 2. Verify the generated manifest's `com.google.android.gms.games.APP_ID` is the Play Games numeric Application ID. This is NOT an Android OAuth client ID ending in `.apps.googleusercontent.com`.
 3. Basic platform authentication requires the Android clients/credentials above. Do NOT paste an Android client ID into a Web Client ID field. A separate Web/game-server client is needed only when intentionally using server-side auth-code/backend features; follow that feature's setup separately.
 4. Call `NativeSocial.AutoConnect(...)` at startup, initialize the game's maps, and wire the achievements button to `NativeSocial.OpenAchievementsUI(...)` so users can explicitly retry sign-in.
+5. If the account is missing OAuth consent (NEED_REMOTE_CONSENT / SIGN_IN_REQUIRED), call `NativeSocial.RequestConsent(callback)` (alias of `AuthenticateManually`) to show the consent UI. Use `NativeSocial.ResetManualSignInDeclined()` to re-enable the startup prompt after a configuration fix, instead of wiping game data.
 5. If only remote OAuth/Play Games configuration changed, a rebuild is normally unnecessary. Rebuild when the package, manifest Application ID, SDK/configuration or signing key in the artifact actually changed.
 
 ## 7. Verify local AND Store installations
