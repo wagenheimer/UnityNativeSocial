@@ -803,6 +803,42 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             });
             row1.Add(resetDeclinedBtn);
 
+            var fullSignInBtn = CreateActionButton("Full Sign-In Test", () =>
+            {
+                AddLog("=== Full GPGS sign-in test starting ===", LogType.Log);
+                NativeSocial.ResetManualSignInDeclined();
+                NativeSocial.Authenticate(success =>
+                {
+                    AddLog($"[1/2] Authenticate: {success} (status={NativeSocial.LastSignInStatus})", success ? LogType.Log : LogType.Warning);
+                    if (!string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport))
+                        AddLog(NativeSocial.LastAuthenticationReport, success ? LogType.Log : LogType.Warning);
+                    if (success)
+                    {
+                        AddLog("=== Sign-in OK ===", LogType.Log);
+                        RefreshDiagnostics();
+                        return;
+                    }
+                    AddLog("[2/2] Falling back to AuthenticateManually (consent UI)...", LogType.Log);
+                    NativeSocial.AuthenticateManually(manualSuccess =>
+                    {
+                        AddLog($"[2/2] AuthenticateManually: {manualSuccess} (status={NativeSocial.LastSignInStatus})", manualSuccess ? LogType.Log : LogType.Error);
+                        if (!string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport))
+                            AddLog(NativeSocial.LastAuthenticationReport, manualSuccess ? LogType.Log : LogType.Error);
+                        AddLog(manualSuccess ? "=== Sign-in OK ===" : "=== Sign-in FAILED (check remote config/tester/publication) ===",
+                            manualSuccess ? LogType.Log : LogType.Error);
+                        RefreshDiagnostics();
+                    });
+                });
+            });
+            row1.Add(fullSignInBtn);
+
+            var copyLogcatBtn = CreateActionButton("Copy Logcat Cmd", () =>
+            {
+                GUIUtility.systemCopyBuffer = "adb logcat -d -v time -s Unity 'PlayGamesServices[SignInAuthenticator]' SignInChimeraActivity";
+                AddLog("Logcat command copied to clipboard.", LogType.Log);
+            });
+            row1.Add(copyLogcatBtn);
+
 #if UNITY_ANDROID
             // Reads the built manifest's Play Games application id: an empty one makes every sign-in fail.
             row1.Add(CreateActionButton("Check Config", () =>
