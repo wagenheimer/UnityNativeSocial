@@ -131,3 +131,30 @@ Read [docs/ANDROID_SIGN_IN_SETUP.md](docs/ANDROID_SIGN_IN_SETUP.md) before diagn
 - Test a direct install AND a Play release-track install. Internal App Sharing can have its own certificate; signing-key upgrades may require additional clients. Do not hardcode this game's fingerprints/project IDs into reusable package defaults.
 - CLI IAM/IAP OAuth commands are not Android OAuth client creation. State tool/access limits accurately. Never log private keys, passwords, access tokens or client secrets.
 - Server-only credential changes normally need no new APK; manifest/package/signature/SDK changes do. Keep release/version automation unchanged for documentation work.
+
+## Google Play Games login debugging playbook (for AI agents)
+
+When a user reports "Google Play Games sign-in fails / returns Canceled", do NOT jump to
+"reinstall the plugin" or "reset keys". Work this checklist first:
+
+1. Get the runtime diagnostics: `NativeSocial.GetAndroidDiagnostics()` output (package, Play Games app id,
+   signing cert SHA-1, installer, Play services versions) from the device log or the debug overlay.
+2. Capture a FRESH logcat attempt:
+   `adb logcat -d -v time -s Unity 'PlayGamesServices[SignInAuthenticator]' SignInChimeraActivity`
+   Unity's `Canceled` frequently HIDES a native `DEVELOPER_ERROR` - compare timestamps.
+3. Verify the chain: installed build's (package + SHA-1) -> Android OAuth client in the SAME Cloud project
+   -> Android credential linked in Play Games Services -> tester access -> publication/propagation.
+   Cloud client alone is NOT enough; Play Games credential linkage is mandatory.
+4. Check the manifest application id (`com.google.android.gms.games.APP_ID`) is the 12-digit Play Games
+   number, not an OAuth client id.
+5. Test BOTH a direct install (TEST/UPLOAD key) and a Play-distributed install (STORE key) - they use
+   different certificates and need separate credentials.
+6. Do NOT wipe game/Play Services data, reset upload keys, or generate new keystores as a fix.
+7. If startup remembered a dismissal, use `NativeSocial.OpenAchievementsUI` for a user-triggered retry;
+   do not erase progress (PlayerPrefs pending progress is preserved).
+8. Run the headless audit: `Unity -batchmode -quit -projectPath <project> -executeMethod
+   Wagenheimer.NativeSocial.Editor.NativeSocialAudit.RunHeadlessAndLog` to catch local config errors.
+
+Useful code entry points: `Runtime/NativeSocial.AndroidDiagnostics.cs` (diagnostics), `Runtime/NativeSocial.cs`
+(`DescribeSignInFailure`, `Authenticate`, `AuthenticateManually`, `AutoConnect`), `Editor/NativeSocialAudit.cs`
+(local checks, prompts). Docs: `docs/ANDROID_SIGN_IN_SETUP.md`.

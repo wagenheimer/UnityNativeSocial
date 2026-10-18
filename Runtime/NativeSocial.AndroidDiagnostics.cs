@@ -187,8 +187,8 @@ namespace Wagenheimer.NativeSocial
                     report.AppendLine($"  Google Play services:  {ReadVersionName(packageManager, "com.google.android.gms")}");
                     report.AppendLine($"  Google Play Games app: {ReadVersionName(packageManager, "com.google.android.play.games")}");
                     report.AppendLine($"  device:                {SystemInfo.deviceModel}, Android API {sdk}, app {Application.version}");
-                    report.Append("  -> the SHA-1 above must be listed for this package under Play Console > Play Games Services > Configuration > Credentials.");
-                }
+                    report.Append("  -> the SHA-1 above must be listed for this package under Play Console > Play Games Services > Configuration > Credentials.\n");
+                    report.Append("  -> capture a fresh sign-in attempt with: adb logcat -d -v time -s Unity 'PlayGamesServices[SignInAuthenticator]' SignInChimeraActivity");                }
             }
             catch (Exception ex)
             {

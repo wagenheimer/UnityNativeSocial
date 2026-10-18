@@ -398,8 +398,11 @@ namespace Wagenheimer.NativeSocial
                 case "NetworkError":
                     return "No connection to Google Play Games.";
                 case "Canceled":
-                    return "Google Play Games returned Canceled. This can mean the player cancelled, but the plugin can also return this status for configuration failures. " +
-                           "Check Android logcat for PlayGamesServices[SignInAuthenticator] and DEVELOPER_ERROR; verify the application id, package name, signing certificate SHA-1 and tester access in Play Console.";
+                    return "Google Play Games returned Canceled. This can mean the player cancelled, but the plugin can also return this status for configuration failures " +
+                           "(missing application id, unregistered signing SHA-1, missing tester access, unpublished Play Games changes). " +
+                           "Unity's 'Canceled' often HIDES a native DEVELOPER_ERROR, so always compare the Unity timestamp with Android logcat: " +
+                           "adb logcat -d -v time -s Unity 'PlayGamesServices[SignInAuthenticator]' SignInChimeraActivity. " +
+                           "Verify the application id, package name, signing certificate SHA-1 and tester/publication access in Play Console.";
                 case "AlreadyInProgress":
                     return "A sign-in was already running.";
                 case "InternalError":

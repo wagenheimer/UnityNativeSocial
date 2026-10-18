@@ -46,6 +46,27 @@ Read the complete [Android sign-in setup and troubleshooting guide](docs/ANDROID
 
 **Three roles do not always mean three clients:** reuse an existing linked client when both package and SHA-1 match. Never infer the certificate from a key's filename, a credential's name, or the Development Build checkbox. Preserve existing credentials; add missing certificate combinations instead of replacing a working Store credential. See the guide for key upgrades and additional signing keys.
 
+## Troubleshooting Google Play Games sign-in (quick reference)
+
+If `Authenticate`/`ManuallyAuthenticate` returns `Canceled` or `DeveloperError`, **do not assume the player cancelled**:
+Google's plugin frequently maps configuration failures to `Canceled` and hides the real native error.
+
+1. Read `NativeSocial.GetAndroidDiagnostics()` (also printed once per session and available in the
+   runtime debug overlay) and compare its **signing cert SHA-1** + **package** + **Play Games app id**
+   with Play Console > Play Games Services > Configuration > Credentials.
+2. Capture a fresh attempt (not an old log line):
+   ```powershell
+   adb logcat -d -v time -s Unity 'PlayGamesServices[SignInAuthenticator]' SignInChimeraActivity
+   ```
+   Look for `DEVELOPER_ERROR` / `APP NOT CORRECTLY CONFIGURED` and the `Cert SHA1 fingerprint` /
+   `App ID from manifest` Google prints.
+3. Common causes: unregistered signing SHA-1 (debug/upload/store key), missing tester access,
+   unpublished Play Games changes, wrong Cloud project, empty `com.google.android.gms.games.APP_ID`.
+4. Startup prompt was dismissed before? Tap the game's achievements button
+   (`NativeSocial.OpenAchievementsUI`) for a fresh manual attempt - progress is never erased.
+
+Full checklist: [docs/ANDROID_SIGN_IN_SETUP.md](docs/ANDROID_SIGN_IN_SETUP.md).
+
 ## Installation
 
 ### Via Unity Package Manager (Git URL)
