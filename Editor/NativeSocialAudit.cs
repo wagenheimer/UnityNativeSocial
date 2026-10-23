@@ -48,7 +48,7 @@ namespace Wagenheimer.NativeSocial.Editor
     /// every platform. Run from the Dashboard, or in CI:
     /// <code>Unity -batchmode -quit -projectPath "&lt;project&gt;" -logFile - -executeMethod Wagenheimer.NativeSocial.Editor.NativeSocialAudit.RunHeadlessAndLog</code>
     /// </summary>
-    public static class NativeSocialAudit
+    public static partial class NativeSocialAudit
     {
         public const string CategoryCommon = "⚙️ Core & Mapping";
         public const string CategorySteam = "🖥️ Steam (Steamworks.NET)";
@@ -649,12 +649,7 @@ public class NativeSocialBootstrap : MonoBehaviour
                 whatIsThis: "Google Play Games ignores or fails achievement reporting if the local user is not signed in.",
                 assetPath: code.AuthenticatePath ?? code.InitializePath);
 
-            Add(results, CategoryAndroid, "Game Stats events (Level Up)", code.HasGameStats,
-                $"Game Stats reporting detected in project code: '{code.GameStatsPath}'.",
-                "No NativeSocial.RecordGameEvent call found: Play cannot show stats on the gamer profile or power Leagues/Quests.",
-                "Send a player event when a level/run ends (see the game's GameStats helper and docs/GameStats). Game Stats must also be configured and published in Play Console.",
-                failSeverity: AuditSeverity.Info,
-                whatIsThis: "Level Up guidelines LU-GS-GAA/GAB require 5 repetitive stats and 1 progression stat, sent as per-run events. The Play Console schema and the code must use identical event/property names.");
+            AuditGameStats(results);
         }
 
         #endregion
