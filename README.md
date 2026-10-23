@@ -226,13 +226,16 @@ Write stat as absolute counter** in the map's "Steam unlock model" card.
 ## Editor Dashboard
 
 `Tools > Wagenheimer > Native Social > Dashboard...` (or `Verify Setup...` to jump straight to the audit)
-opens a UI Toolkit dashboard with five tabs:
+opens a UI Toolkit dashboard with six tabs:
 
 - **Setup Audit** — automated checks for GPGS/Steamworks presence and scripting defines, bootstrap
   script presence, and achievement-mapping completeness (see below), each with a one-click fix where
   possible, plus "Copy Report" / "Copy AI Fix Prompt" buttons. When the Google Play Games plugin is
   missing or was imported as loose `Assets/` files, the fix installs it from Google's Git repository as
   a proper UPM package (moving any loose copy to the Trash first), which also activates the scripting define.
+- **Play Games** — the Android setup form: application id, optional Android resources XML and the optional
+  Web client id used by server auth codes (Cloud Save), with field-level validation and shortcuts to the
+  Google Cloud credential pages. Apply calls Google's own Play Games setup and regenerates the manifest.
 - **Achievements** — lists every `AchievementTierMap` asset in the project, how many entries are
   still missing a Google Play/Apple ID, and an **"⬆ Export for AppDeployHub"** button (see below).
 - **Live Tester** — exercises `Authenticate`/`Report`/`SubmitScore` against whichever platform SDK

@@ -88,16 +88,25 @@ namespace Wagenheimer.NativeSocial.Editor
         }
 
         /// <summary>
-        /// Checks the optional Web client id: empty is fine (it is only needed for server-side access, NativeSocial.GetServerAuthCode), otherwise it must be an
+        /// Checks the optional Web client id: empty is fine (sign-in and achievements do not need it), otherwise it must be an
         /// OAuth "Web application" client of the same Google Cloud project as the application id, which Google's setup also enforces.
+        /// The server auth code (NativeSocial.GetServerAuthCode, e.g. Cloud Save linking through Unity Authentication) is what needs it.
         /// </summary>
         public static string ValidateWebClientId(string clientId, string appId)
         {
             if (string.IsNullOrWhiteSpace(clientId)) return null;
 
-            var match = ClientIdPattern.Match(clientId.Trim());
+            var trimmed = clientId.Trim();
+
+            // The most common mistake: pasting the Cloud project number (also the value of the Application ID field) instead of the client id.
+            if (trimmed.All(char.IsDigit))
+                return $"\"{trimmed}\" is the project number, not an OAuth client id. In Google Cloud > APIs & Services > Credentials, " +
+                       $"open the OAuth client of type \"Web application\" and copy its full Client ID: {trimmed}-<hash>.apps.googleusercontent.com.";
+
+            var match = ClientIdPattern.Match(trimmed);
             if (!match.Success)
-                return "A Web client id looks like 123456789012-abcdefghijklm.apps.googleusercontent.com.";
+                return "A Web client id is the full Client ID string from Google Cloud > Credentials, like " +
+                       "123456789012-abcdefghijklm.apps.googleusercontent.com (it ends with .apps.googleusercontent.com).";
 
             return !string.IsNullOrEmpty(appId) && match.Groups["project"].Value != appId
                 ? $"The number before the dash ({match.Groups["project"].Value}) must equal the application id ({appId}); the client must belong to the same Play Games project."

@@ -20,6 +20,7 @@ namespace Wagenheimer.NativeSocial.Editor
         public enum Tab
         {
             SetupAudit,
+            PlayGamesSetup,
             Achievements,
             LiveTester,
             Checklist,
@@ -114,6 +115,7 @@ namespace Wagenheimer.NativeSocial.Editor
             (Tab tab, string icon, string title)[] tabs =
             {
                 (Tab.SetupAudit, "🔍", "Setup Audit"),
+                (Tab.PlayGamesSetup, "🎮", "Play Games"),
                 (Tab.Achievements, "🏆", "Achievements"),
                 (Tab.LiveTester, "🧪", "Live Tester"),
                 (Tab.Checklist, "📋", "Checklist"),
@@ -146,6 +148,7 @@ namespace Wagenheimer.NativeSocial.Editor
             VisualElement view = _currentTab switch
             {
                 Tab.SetupAudit => new NativeSocialAuditView().Root,
+                Tab.PlayGamesSetup => new NativeSocialGpgsSetupView().Root,
                 Tab.Achievements => new NativeSocialAchievementsView().Root,
                 Tab.LiveTester => new NativeSocialHelperView().Root,
                 Tab.Checklist => new NativeSocialChecklistView().Root,
