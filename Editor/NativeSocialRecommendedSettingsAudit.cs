@@ -138,8 +138,10 @@ namespace Wagenheimer.NativeSocial.Editor
             try { text = File.ReadAllText(AndroidMainTemplate); } catch { }
 
             var match = text != null ? Regex.Match(text, @"androidx\.fragment:fragment:([0-9]+(?:\.[0-9]+)+)") : Match.Empty;
-            var hasVersion = match.Success && Version.TryParse(match.Groups[1].Value, out var parsed);
-            var version = hasVersion ? parsed : null;
+            Version version = null;
+            if (match.Success)
+                Version.TryParse(match.Groups[1].Value, out version);
+
             var ok = version != null && version >= new Version(1, 2, 1);
 
             Add(results, CategoryRecommended, "androidx.fragment version", ok,
