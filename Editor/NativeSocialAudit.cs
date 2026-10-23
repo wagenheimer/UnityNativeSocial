@@ -611,6 +611,7 @@ public class NativeSocialBootstrap : MonoBehaviour
             }
 
             AuditExternalDependencyManager(results);
+            AuditEdm4uLeftovers(results);
 
             var maps = FindAllAchievementTierMaps();
             if (maps.Count > 0)
@@ -866,6 +867,82 @@ public class NativeSocialBootstrap : MonoBehaviour
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Legacy EDM4U imports live under Assets/ (MobileDependencyResolver for the older .unitypackage, ExternalDependencyManager for
+        /// the newer one). The UPM migration removes their assemblies but not always the folders, and Unity's Package Manager never deletes
+        /// files that a .unitypackage imported. The Trash button is only offered when the folder cannot be the real install.
+        /// </summary>
+        private static void AuditEdm4uLeftovers(List<AuditResult> results)
+        {
+            var legacyRoots = new[] { "Assets/MobileDependencyResolver", "Assets/ExternalDependencyManager" };
+            var upmInstalled = IsEdm4uUpmInstalled();
+
+            foreach (var root in legacyRoots)
+            {
+                if (!AssetDatabase.IsValidFolder(root)) continue;
+
+                string[] files;
+                try
+                {
+                    files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
+                }
+                catch
+                {
+                    files = Array.Empty<string>();
+                }
+
+                // Debug symbols and .meta files are what a migration leaves behind; anything else can still be a working resolver.
+                var hasResolverFiles = files.Any(file =>
+                    !file.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
+                    !file.EndsWith(".meta", StringComparison.OrdinalIgnoreCase));
+
+                if (!hasResolverFiles)
+                {
+                    Add(results, CategoryAndroid, "EDM4U legacy folder leftover", false,
+                        string.Empty,
+                        $"{root} is left over from the old .unitypackage: only debug symbols and .meta files remain. Unity's Package Manager migration never cleans Assets/ folders.",
+                        "Nothing else uses this folder; the resolver comes from the UPM package. Moving it to the Trash is safe.",
+                        "Move to Trash", () => AssetDatabase.MoveAssetToTrash(root),
+                        AuditSeverity.Warning,
+                        whatIsThis: "Files imported by a .unitypackage are project assets, not packages, so a package migration cannot remove them.");
+                }
+                else if (upmInstalled)
+                {
+                    Add(results, CategoryAndroid, "EDM4U duplicated under Assets/", false,
+                        string.Empty,
+                        $"{root} contains a legacy EDM4U install while the UPM package is also installed, which defines the resolver twice (duplicate types / Version Handler conflicts).",
+                        "Keep the UPM package and move the Assets/ copy to the Trash.",
+                        "Move to Trash", () => AssetDatabase.MoveAssetToTrash(root),
+                        AuditSeverity.Fail,
+                        whatIsThis: "The resolver must exist once. Two copies fight over the same Google.JarResolver assemblies and dependency files.");
+                }
+                else
+                {
+                    Add(results, CategoryAndroid, "EDM4U legacy install (Assets/)", false,
+                        string.Empty,
+                        $"{root} contains a legacy EDM4U install. It works, but Google deprecated this distribution and the Package Manager cannot update it.",
+                        "Install com.unity.external-dependency-manager (or the Git package your Google plugins require) before deleting this folder, or the Android/iOS resolver disappears.",
+                        "Open official docs", () => Application.OpenURL("https://docs.unity3d.com/Packages/com.unity.external-dependency-manager@2.1/manual/index.html"),
+                        AuditSeverity.Info,
+                        whatIsThis: "Old .unitypackage installs of EDM4U are not managed by the Package Manager, so they do not receive updates or deprecation notices.");
+                }
+            }
+        }
+
+        private static bool IsEdm4uUpmInstalled()
+        {
+            try
+            {
+                return UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()
+                    .Any(package => package.name == "com.google.external-dependency-manager"
+                                 || package.name == "com.unity.external-dependency-manager");
+            }
+            catch
+            {
+                return false;
             }
         }
 
