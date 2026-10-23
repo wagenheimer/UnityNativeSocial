@@ -29,7 +29,7 @@ namespace Wagenheimer.NativeSocial.Editor
             var max = PlayerSettings.Android.maxAspectRatio;
             var ok = mode == AspectRatioModeCustom && min <= 1.34f && max >= 2.33f;
 
-            Add(results, CategoryAndroid, "Large-screen aspect ratios (Level Up)", ok,
+            Add(results, CategoryRecommended, "Large-screen aspect ratios (Level Up)", ok,
                 $"Custom mode {min:0.00}-{max:0.00} fills 4:3, 16:10 and 21:9 without letterboxing.",
                 $"Aspect ratio mode is {DescribeAspectRatioMode(mode)} with {min:0.00}-{max:0.00}. Landscape games must fill 4:3 (1.33), 16:10 (1.60) and 21:9 (2.33) for Level Up LU-LS-GAC; a 3:2 minimum letterboxes 4:3 tablets.",
                 "Set Aspect Ratio Mode to Custom, Minimum 1.32 and Maximum 2.34 (UnityBuildPipeline also applies this on Android builds).",

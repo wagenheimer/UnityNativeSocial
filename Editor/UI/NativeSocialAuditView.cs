@@ -98,6 +98,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🖥️ Steam", () => SetPlatformFilter(NativeSocialAudit.CategorySteam), _platformFilter == NativeSocialAudit.CategorySteam));
                 _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🤖 Android", () => SetPlatformFilter(NativeSocialAudit.CategoryAndroid), _platformFilter == NativeSocialAudit.CategoryAndroid));
                 _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("🍎 iOS", () => SetPlatformFilter(NativeSocialAudit.CategoryIOS), _platformFilter == NativeSocialAudit.CategoryIOS));
+                _platformRow.Add(NativeSocialUIStyle.CreateFilterButton("⚙️ Recommended", () => SetPlatformFilter(NativeSocialAudit.CategoryRecommended), _platformFilter == NativeSocialAudit.CategoryRecommended));
             }
 
             if (_severityRow != null)

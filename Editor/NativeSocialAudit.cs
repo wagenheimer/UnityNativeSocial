@@ -54,6 +54,7 @@ namespace Wagenheimer.NativeSocial.Editor
         public const string CategorySteam = "🖥️ Steam (Steamworks.NET)";
         public const string CategoryAndroid = "🤖 Android (Google Play Games)";
         public const string CategoryIOS = "🍎 iOS (Game Center)";
+        public const string CategoryRecommended = "⚙️ Recommended project settings";
 
         public struct ProjectCodeAnalysis
         {
@@ -96,6 +97,7 @@ namespace Wagenheimer.NativeSocial.Editor
             AuditSteam(results);
             AuditAndroid(results);
             AuditIOS(results);
+            AuditRecommendedSettings(results);
             AttachPrompts(results);
 
             return results;
@@ -650,7 +652,6 @@ public class NativeSocialBootstrap : MonoBehaviour
                 assetPath: code.AuthenticatePath ?? code.InitializePath);
 
             AuditGameStats(results);
-            AuditLargeScreenAspectRatio(results);
         }
 
         #endregion
