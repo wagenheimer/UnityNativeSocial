@@ -202,6 +202,31 @@ namespace Wagenheimer.NativeSocial
         // ── Platform UI ───────────────────────────────────────────────
 
         /// <summary>
+        /// Sends a Game Stats player event to Google Play (<c>PlayerGameEvent</c>). Android only: other platforms have no
+        /// equivalent and the call is a no-op there.
+        /// <para>
+        /// Event and property names must match the schema declared in Play Console &gt; Play Games Services &gt; Game Stats
+        /// (see docs/GameStats/PlayerGameEvent.csv). Values may be int, long, float, double, string, bool or TimeSpan.
+        /// Send per-event values (for example the coins collected in this run), never lifetime totals: the aggregation
+        /// configured in the console (SUM/COUNT/MAX) builds the cumulative stat.
+        /// </para>
+        /// </summary>
+        public static void RecordGameEvent(string eventName, params (string key, object value)[] properties)
+        {
+            if (string.IsNullOrWhiteSpace(eventName))
+            {
+                Debug.LogWarning("[NativeSocial] RecordGameEvent called with an empty event name; ignored.");
+                return;
+            }
+
+#if UNITY_ANDROID
+            RecordGameEventAndroid(eventName, properties);
+#else
+            OnLog?.Invoke($"[NativeSocial] Game Stats event '{eventName}' ignored: Game Stats exists only on Google Play (Android).");
+#endif
+        }
+
+        /// <summary>
         /// Opens the platform-native achievements screen (Google Play Games or Game Center), if one is available.
         /// </summary>
         /// <returns>

@@ -69,6 +69,8 @@ namespace Wagenheimer.NativeSocial.Editor
             public string SyncCompletedPath;
             public bool HasShowAchievementsUI;
             public string ShowAchievementsUIPath;
+            public bool HasGameStats;
+            public string GameStatsPath;
         }
 
         private static ProjectCodeAnalysis? _cachedAnalysis;
@@ -160,7 +162,13 @@ namespace Wagenheimer.NativeSocial.Editor
                     analysis.ShowAchievementsUIPath = path;
                 }
 
-                if (analysis.HasInitialize && analysis.HasAuthenticate && analysis.HasReport && analysis.HasLocId && analysis.HasSyncCompleted && analysis.HasShowAchievementsUI)
+                if (!analysis.HasGameStats && text.Contains("RecordGameEvent"))
+                {
+                    analysis.HasGameStats = true;
+                    analysis.GameStatsPath = path;
+                }
+
+                if (analysis.HasInitialize && analysis.HasAuthenticate && analysis.HasReport && analysis.HasLocId && analysis.HasSyncCompleted && analysis.HasShowAchievementsUI && analysis.HasGameStats)
                     break;
             }
 
@@ -640,6 +648,13 @@ public class NativeSocialBootstrap : MonoBehaviour
                 AuditSeverity.Warning,
                 whatIsThis: "Google Play Games ignores or fails achievement reporting if the local user is not signed in.",
                 assetPath: code.AuthenticatePath ?? code.InitializePath);
+
+            Add(results, CategoryAndroid, "Game Stats events (Level Up)", code.HasGameStats,
+                $"Game Stats reporting detected in project code: '{code.GameStatsPath}'.",
+                "No NativeSocial.RecordGameEvent call found: Play cannot show stats on the gamer profile or power Leagues/Quests.",
+                "Send a player event when a level/run ends (see the game's GameStats helper and docs/GameStats). Game Stats must also be configured and published in Play Console.",
+                failSeverity: AuditSeverity.Info,
+                whatIsThis: "Level Up guidelines LU-GS-GAA/GAB require 5 repetitive stats and 1 progression stat, sent as per-run events. The Play Console schema and the code must use identical event/property names.");
         }
 
         #endregion

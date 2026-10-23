@@ -164,6 +164,57 @@ namespace Wagenheimer.NativeSocial
                     PlayGamesPlatform.Instance.UnlockAchievement(gpgsId, ok => LogGpgsCallback("UnlockAchievement", gpgsId, locId, ok));
             }
         }
+
+        /// <summary>
+        /// Game Stats: one PlayerGameEvent with the properties declared for it in Play Console. ProgressUpdate is a normal
+        /// event on this side (the console treats its <c>currentProgress</c> property as the progression stat).
+        /// <para>
+        /// Events are dropped while signed out: the backend discards them anyway, and replaying per-run values later would
+        /// double count (SUM/COUNT aggregations are cumulative).
+        /// </para>
+        /// </summary>
+        private static void RecordGameEventAndroid(string eventName, (string key, object value)[] properties)
+        {
+            if (!IsAuthenticated)
+            {
+                OnLog?.Invoke($"[NativeSocial] Game Stats event '{eventName}' skipped: player is not signed in to Google Play Games.");
+                return;
+            }
+
+            try
+            {
+                var builder = new PlayerGameEvent.Builder(eventName);
+
+                if (properties != null)
+                {
+                    foreach (var property in properties)
+                    {
+                        if (property.value == null) continue;
+
+                        switch (property.value)
+                        {
+                            case long longValue: builder.AddProperty(property.key, longValue); break;
+                            case int intValue: builder.AddProperty(property.key, intValue); break;
+                            case double doubleValue: builder.AddProperty(property.key, doubleValue); break;
+                            case float floatValue: builder.AddProperty(property.key, (double)floatValue); break;
+                            case bool boolValue: builder.AddProperty(property.key, boolValue); break;
+                            case string stringValue: builder.AddProperty(property.key, stringValue); break;
+                            case System.TimeSpan duration: builder.AddProperty(property.key, duration); break;
+                            default:
+                                Debug.LogWarning($"[NativeSocial] Game Stats property '{property.key}' has unsupported type " +
+                                                 $"{property.value.GetType().Name}; property skipped.");
+                                break;
+                        }
+                    }
+                }
+
+                PlayGamesPlatform.Instance.RecordEvent(builder.Build());
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[NativeSocial] Game Stats event '{eventName}' failed: {e.Message}");
+            }
+        }
     }
 }
 #endif
