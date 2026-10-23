@@ -113,8 +113,8 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 "Test on a real device or Play Services emulator with a Google account added to the Play Console tester list."),
 
             // iOS (Game Center) ─────────────────────────────────────────────────────
-            (CategoryIOS, "ios_capability", "[In-Project] Game Center capability enabled in Xcode",
-                "Ensure Game Center capability is enabled in Xcode project settings (Signing & Capabilities) or through an automated post-process build script."),
+            (CategoryIOS, "ios_capability", "[Automated] Game Center capability added to the Xcode project",
+                "The package's post-process adds com.apple.developer.game-center to the generated project. After building, confirm Signing & Capabilities > Game Center in Xcode; App Store Connect must also have Game Center enabled for the bundle id."),
             (CategoryIOS, "ios_ids", "[In-Project] AppleId filled in AchievementTierMap",
                 "Every trophy tier shipping on iOS has its Game Center achievement ID configured (from App Store Connect)."),
             (CategoryIOS, "ios_console_achievements", "[Store Console] 54 achievements created in App Store Connect",

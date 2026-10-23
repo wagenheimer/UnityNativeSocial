@@ -243,7 +243,7 @@ opens a UI Toolkit dashboard with six tabs:
 - **Checklist** — a persistent (per-machine, `EditorPrefs`-backed) release checklist. It opens with a
   "How the integration works" summary and then spells out, in detail and per platform, everything needed
   for **Steam** (Steamworks.NET define/`SteamReady`/partner-site stats), **Android** (Google Play Games
-  install/define/OAuth/IDs/sign-in/device test) and **iOS** (Game Center capability/IDs/auth/device test),
+  install/define/OAuth/IDs/sign-in/device test) and **iOS** (Game Center capability added automatically by the package's build step, IDs/auth/device test),
   plus the Google Play Console, App Store Connect, Steamworks partner-site and release steps. Projects
   that already sync Steam directly (a `SteamManager`-style script) get an explicit reminder that only one
   owner per platform should report, so a trophy isn't unlocked twice.

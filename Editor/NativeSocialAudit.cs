@@ -650,6 +650,7 @@ public class NativeSocialBootstrap : MonoBehaviour
                 assetPath: code.AuthenticatePath ?? code.InitializePath);
 
             AuditGameStats(results);
+            AuditLargeScreenAspectRatio(results);
         }
 
         #endregion
@@ -1082,6 +1083,8 @@ public class NativeSocialBootstrap : MonoBehaviour
                 AuditSeverity.Info,
                 whatIsThis: "ShowAchievementsUI() opens the native iOS Game Center modal overlay, showing all unlocked and locked achievements with progress bars.",
                 assetPath: code.ShowAchievementsUIPath);
+
+            AuditGameCenterCapability(results);
         }
 
         #endregion
