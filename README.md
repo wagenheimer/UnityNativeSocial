@@ -79,6 +79,7 @@ Or via `manifest.json`:
 ```json
 "com.wagenheimer.nativesocial": "https://github.com/wagenheimer/UnityNativeSocial.git"
 ```
+The package also installs [Wagenheimer Package Hub](https://github.com/wagenheimer/UnityPackageHub) as an unpinned dependency, so update checks always use the latest Hub.
 
 ## Quick Start
 
