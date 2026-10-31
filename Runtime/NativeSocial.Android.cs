@@ -1,4 +1,5 @@
 #if UNITY_ANDROID
+using System;
 using System.Collections.Generic;
 using GooglePlayGames;
 using GooglePlayGames.BasicApi;
@@ -183,7 +184,18 @@ namespace Wagenheimer.NativeSocial
 
             try
             {
-                var builder = new PlayerGameEvent.Builder(eventName);
+                var playerGameEventType = FindType("GooglePlayGames.BasicApi.PlayerGameEvent");
+                if (playerGameEventType == null)
+                {
+                    OnLog?.Invoke($"[NativeSocial] Game Stats event '{eventName}' skipped: PlayerGameEvent is not available in the installed Google Play Games plugin (requires GPGS v2.2.0+).");
+                    return;
+                }
+
+                var builderType = playerGameEventType.GetNestedType("Builder");
+                if (builderType == null) return;
+
+                var builder = Activator.CreateInstance(builderType, eventName);
+                if (builder == null) return;
 
                 if (properties != null)
                 {
@@ -193,13 +205,27 @@ namespace Wagenheimer.NativeSocial
 
                         switch (property.value)
                         {
-                            case long longValue: builder.AddProperty(property.key, longValue); break;
-                            case int intValue: builder.AddProperty(property.key, intValue); break;
-                            case double doubleValue: builder.AddProperty(property.key, doubleValue); break;
-                            case float floatValue: builder.AddProperty(property.key, (double)floatValue); break;
-                            case bool boolValue: builder.AddProperty(property.key, boolValue); break;
-                            case string stringValue: builder.AddProperty(property.key, stringValue); break;
-                            case System.TimeSpan duration: builder.AddProperty(property.key, duration); break;
+                            case long longValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(long) })?.Invoke(builder, new object[] { property.key, longValue });
+                                break;
+                            case int intValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(int) })?.Invoke(builder, new object[] { property.key, intValue });
+                                break;
+                            case double doubleValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(double) })?.Invoke(builder, new object[] { property.key, doubleValue });
+                                break;
+                            case float floatValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(double) })?.Invoke(builder, new object[] { property.key, (double)floatValue });
+                                break;
+                            case bool boolValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(bool) })?.Invoke(builder, new object[] { property.key, boolValue });
+                                break;
+                            case string stringValue:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(string) })?.Invoke(builder, new object[] { property.key, stringValue });
+                                break;
+                            case TimeSpan duration:
+                                builderType.GetMethod("AddProperty", new[] { typeof(string), typeof(TimeSpan) })?.Invoke(builder, new object[] { property.key, duration });
+                                break;
                             default:
                                 Debug.LogWarning($"[NativeSocial] Game Stats property '{property.key}' has unsupported type " +
                                                  $"{property.value.GetType().Name}; property skipped.");
@@ -208,12 +234,29 @@ namespace Wagenheimer.NativeSocial
                     }
                 }
 
-                PlayGamesPlatform.Instance.RecordEvent(builder.Build());
+                var builtEvent = builderType.GetMethod("Build", Type.EmptyTypes)?.Invoke(builder, null);
+                if (builtEvent != null)
+                {
+                    var recordMethod = typeof(PlayGamesPlatform).GetMethod("RecordEvent", new[] { playerGameEventType });
+                    recordMethod?.Invoke(PlayGamesPlatform.Instance, new object[] { builtEvent });
+                }
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogWarning($"[NativeSocial] Game Stats event '{eventName}' failed: {e.Message}");
             }
+        }
+
+        private static Type FindType(string fullName)
+        {
+            var type = Type.GetType(fullName);
+            if (type != null) return type;
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = asm.GetType(fullName);
+                if (type != null) return type;
+            }
+            return null;
         }
     }
 }
