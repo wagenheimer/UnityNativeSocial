@@ -434,3 +434,11 @@ MIT
 [I2 Localization](https://github.com/wagenheimer/UnityI2Localization)
 
 Explore every project at **[wagenheimer.com/opensource](https://wagenheimer.com/opensource)**.
+
+## Choosing stores and exporting for Steam
+
+In the Achievement Map editor, the **Platforms and services** card chooses the stores a game ships achievements on (Android, Apple, Steam) and turns the AppDeployHub tools on or off.
+
+**Export Steam pack** writes everything for the Steamworks Bulk Import/Export tab: the definitions and localization CSV files and the achieved and unachieved icons. Steamworks has no bulk import for stats, so the pack also lists them in `stats-to-create.csv` to create by hand before importing. Follow the `README.md` written with the pack.
+
+To show progress, fill `SteamStat` and `StepsToUnlock`, enable `SteamSetStatAbsolute`, and call `NativeSocial.ReportProgress(locId, current, total, completed)` for every achievement whenever the game evaluates them. It sends only new unlocks and higher values.

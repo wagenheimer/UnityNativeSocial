@@ -96,6 +96,8 @@ namespace Wagenheimer.NativeSocial
             _steamMap = steamMap ?? new Dictionary<string, SteamEntry>();
             _androidLeaderboardMap = androidLeaderboardMap ?? new Dictionary<string, string>();
             _iosLeaderboardMap = iosLeaderboardMap ?? new Dictionary<string, string>();
+            _sentProgress.Clear();
+            _sentUnlocks.Clear();
             _initialized = true;
 
 #if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
@@ -175,6 +177,40 @@ namespace Wagenheimer.NativeSocial
 #else
             OnLog?.Invoke($"[NativeSocial] Report('{locId}') not dispatched: no platform backend on this build target ({Application.platform}). Editor/standalone without Steam keeps progress local only.");
 #endif
+        }
+
+        // Progress
+
+        private static readonly Dictionary<string, int> _sentProgress = new Dictionary<string, int>();
+        private static readonly HashSet<string> _sentUnlocks = new HashSet<string>();
+
+        /// <summary>
+        /// Reports an achievement's absolute progress, and can be called for every achievement whenever the
+        /// game evaluates them: it only calls <see cref="Report"/> for an unlock not sent yet or a value
+        /// higher than the last one sent this session, so the platform never sees progress go back.
+        /// Requires <see cref="AchievementTierMap.SteamSetStatAbsolute"/> on Steam. A value of 0 is not sent.
+        /// </summary>
+        public static void ReportProgress(string locId, int current, int total, bool completed)
+        {
+            if (!_initialized || string.IsNullOrEmpty(locId)) return;
+
+#if WAGENHEIMER_NATIVESOCIAL_STEAM && !UNITY_ANDROID && !UNITY_IOS
+            // Not recorded as sent, so it goes out once Steam is ready.
+            if (!SteamReady) return;
+#endif
+
+            if (completed)
+            {
+                if (!_sentUnlocks.Add(locId)) return;
+            }
+            else
+            {
+                _sentProgress.TryGetValue(locId, out var sent);
+                if (_sentUnlocks.Contains(locId) || current <= sent) return;
+            }
+
+            _sentProgress[locId] = current;
+            Report(locId, 0, current, total, completed);
         }
 
         // ── Sync completed ────────────────────────────────────────────

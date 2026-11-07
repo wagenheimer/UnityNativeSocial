@@ -63,6 +63,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             }
 
             Root.Add(BuildToolbar());
+            Root.Add(BuildPlatformsCard());
             Root.Add(BuildSteamModelCard());
             _hubContainer = new VisualElement();
             Root.Add(_hubContainer);
@@ -158,8 +159,13 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 : "I2 Localization was not found in this project.";
             actions.Add(genBtn);
 
-            actions.Add(NativeSocialUIStyle.CreateButton("⬆ Export for AppDeployHub", () =>
-                AchievementExchangeExporter.ExportToFile(_map, PlayerSettings.productName, _language)));
+            _exportHubButton = NativeSocialUIStyle.CreateButton("⬆ Export for AppDeployHub", () =>
+                AchievementExchangeExporter.ExportToFile(_map, PlayerSettings.productName, _language));
+            actions.Add(_exportHubButton);
+            _exportSteamButton = NativeSocialUIStyle.CreateButton("🎮 Export Steam pack", () => SteamPackExporter.ExportWithDialog(_map));
+            _exportSteamButton.tooltip = "Writes the CSV files and icons for the Steamworks Bulk Import/Export tab, plus the list of stats to create by hand.";
+            actions.Add(_exportSteamButton);
+            RefreshPlatformButtons();
             actions.Add(NativeSocialUIStyle.CreateButton("➕ Add trophy", AddTrophy));
             card.Add(actions);
 
@@ -180,6 +186,70 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 b.RemoveFromClassList("ns-btn-secondary");
                 b.AddToClassList(f == _filter ? "ns-btn-primary" : "ns-btn-secondary");
             }
+        }
+
+        // Platforms
+        private Button _exportHubButton;
+        private Button _exportSteamButton;
+
+        private VisualElement BuildPlatformsCard()
+        {
+            var card = NativeSocialUIStyle.CreateCard("🌐 Platforms and services",
+                "Choose the stores this game ships achievements on. A disabled store receives nothing and the audit stops asking for its IDs. AppDeployHub only publishes to Google Play and Game Center; Steam uses the Steam pack export.");
+
+            var platforms = new EnumFlagsField("Stores", _map.Platforms);
+            platforms.RegisterValueChangedCallback(evt =>
+            {
+                Undo.RecordObject(_map, "Change achievement stores");
+                _map.Platforms = (AchievementPlatforms)evt.newValue;
+                EditorUtility.SetDirty(_map);
+                OnPlatformsChanged();
+            });
+            card.Add(platforms);
+
+            var hub = new Toggle("Use AppDeployHub") { value = _map.UseAppDeployHub };
+            hub.RegisterValueChangedCallback(evt =>
+            {
+                Undo.RecordObject(_map, "Toggle AppDeployHub");
+                _map.UseAppDeployHub = evt.newValue;
+                EditorUtility.SetDirty(_map);
+                OnPlatformsChanged();
+            });
+            card.Add(hub);
+
+            var appId = new TextField("Steam App ID") { value = _map.SteamAppId, tooltip = "Prefix of the CSV file names in the Steam pack." };
+            appId.RegisterValueChangedCallback(evt =>
+            {
+                Undo.RecordObject(_map, "Change Steam App ID");
+                _map.SteamAppId = evt.newValue;
+                EditorUtility.SetDirty(_map);
+            });
+            card.Add(appId);
+
+            var icons = new TextField("Steam icon folder") { value = _map.IconFolder, tooltip = "Project folder with one <SteamAchievement>.png per achievement." };
+            icons.RegisterValueChangedCallback(evt =>
+            {
+                Undo.RecordObject(_map, "Change icon folder");
+                _map.IconFolder = evt.newValue;
+                EditorUtility.SetDirty(_map);
+            });
+            card.Add(icons);
+
+            return card;
+        }
+
+        private void OnPlatformsChanged()
+        {
+            RefreshPlatformButtons();
+            RebuildHubCard();
+        }
+
+        private void RefreshPlatformButtons()
+        {
+            if (_exportHubButton != null)
+                _exportHubButton.style.display = _map.ShowsAppDeployHub ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_exportSteamButton != null)
+                _exportSteamButton.style.display = _map.Targets(AchievementPlatforms.Steam) ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         // ── Steam unlock model ───────────────────────────────────────────────────
@@ -228,7 +298,7 @@ namespace Wagenheimer.NativeSocial.Editor.UI
         private void RebuildHubCard()
         {
             _hubContainer.Clear();
-            _hubContainer.Add(BuildAppDeployHubCard());
+            if (_map.ShowsAppDeployHub) _hubContainer.Add(BuildAppDeployHubCard());
         }
 
         private VisualElement BuildAppDeployHubCard()

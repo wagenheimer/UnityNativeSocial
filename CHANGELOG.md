@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.49.0] - 2026-11-06
+- feat(map): `AchievementTierMap.Platforms` chooses the stores a game ships achievements on (Android, Apple, Steam, any combination). A disabled store gets an empty map, and the audit and checklist stop counting its missing IDs.
+- feat(map): `UseAppDeployHub` hides the AppDeployHub tools. They are also hidden when neither Google Play nor Game Center is enabled.
+- feat(steam): "Export Steam pack" writes the definitions and localization CSV files and the achieved and unachieved icons for the Steamworks Bulk Import/Export tab, plus the stats to create by hand, which Steamworks has no bulk import for. `SteamAppId` and `IconFolder` configure it.
+- feat(report): `NativeSocial.ReportProgress` sends only new unlocks and higher progress, so a game can report every achievement on each evaluation.
+- fix(steam): `BuildSteamMap` also includes achievements without a stat, which only need an explicit unlock.
+
 ## [1.48.0] - 2026-11-06
 - feat(android): The Google Play Games plugin is now optional. Every Android code path is gated on `UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS`, so a project without `com.google.play.games` compiles for Android and `NativeSocial` becomes a no-op there. A loose `Assets/GooglePlayGames` install must define `WAGENHEIMER_NATIVESOCIAL_GPGS` itself (the Setup Audit already reports this).
 

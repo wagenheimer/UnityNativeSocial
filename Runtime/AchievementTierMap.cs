@@ -74,10 +74,38 @@ namespace Wagenheimer.NativeSocial
     /// built here simply omit that entry, and <see cref="NativeSocial.Report"/> already no-ops for a LocId
     /// with no mapping on the active platform.
     /// </summary>
+    /// <summary>Stores a game ships achievements on. Disabled stores get empty maps and are skipped by the audit.</summary>
+    [Flags]
+    public enum AchievementPlatforms
+    {
+        None = 0,
+        Android = 1,
+        Apple = 2,
+        Steam = 4
+    }
+
     [CreateAssetMenu(fileName = "AchievementTierMap", menuName = "Wagenheimer/Native Social/Achievement Tier Map")]
     public class AchievementTierMap : ScriptableObject
     {
         public List<AchievementTierEntry> Entries = new List<AchievementTierEntry>();
+
+        [Tooltip("Stores this game ships achievements on. A disabled store gets an empty map, so nothing is reported to it, and the audit stops asking for its IDs.")]
+        public AchievementPlatforms Platforms = AchievementPlatforms.Android | AchievementPlatforms.Apple | AchievementPlatforms.Steam;
+
+        [Tooltip("Show the AppDeployHub tools. Turn off for games that don't use it. It only handles Google Play and Game Center, so it is also hidden when neither is enabled.")]
+        public bool UseAppDeployHub = true;
+
+        [Tooltip("Steam App ID, used as the prefix of the CSV file names in the Steam pack.")]
+        public string SteamAppId = string.Empty;
+
+        [Tooltip("Project folder with one <SteamAchievement>.png per achievement, used by the Steam pack export.")]
+        public string IconFolder = string.Empty;
+
+        /// <summary>Whether this map reports to the given store.</summary>
+        public bool Targets(AchievementPlatforms platform) => (Platforms & platform) != 0;
+
+        /// <summary>Whether the AppDeployHub tools apply: enabled, and at least one store it can publish to.</summary>
+        public bool ShowsAppDeployHub => UseAppDeployHub && Targets(AchievementPlatforms.Android | AchievementPlatforms.Apple);
 
         [Tooltip("When a name comes from an I2 term shared by all tiers of a trophy, append the tier numeral (I, II, III) so each tier is a distinct achievement on the stores. Ignored for a trophy with a single tier.")]
         public bool AppendTierNumeral = true;
@@ -140,23 +168,24 @@ namespace Wagenheimer.NativeSocial
 
         /// <summary>LocId -> Google Play achievement ID, for entries with a non-empty <see cref="AchievementTierEntry.GooglePlayId"/>.</summary>
         public Dictionary<string, string> BuildAndroidMap() =>
-            Entries.Where(e => !string.IsNullOrEmpty(e.GooglePlayId))
+            Entries.Where(e => Targets(AchievementPlatforms.Android) && !string.IsNullOrEmpty(e.GooglePlayId))
                 .ToDictionary(e => LocId(e.TrophyNumber, e.Tier), e => e.GooglePlayId);
 
         /// <summary>LocId -> Apple Game Center achievement ID, for entries with a non-empty <see cref="AchievementTierEntry.AppleId"/>.</summary>
         public Dictionary<string, string> BuildIosMap() =>
-            Entries.Where(e => !string.IsNullOrEmpty(e.AppleId))
+            Entries.Where(e => Targets(AchievementPlatforms.Apple) && !string.IsNullOrEmpty(e.AppleId))
                 .ToDictionary(e => LocId(e.TrophyNumber, e.Tier), e => e.AppleId);
 
         /// <summary>
-        /// LocId -> <see cref="SteamEntry"/> for entries with a non-empty <see cref="AchievementTierEntry.SteamStat"/>,
+        /// LocId -> <see cref="SteamEntry"/> for entries with a <see cref="AchievementTierEntry.SteamStat"/> or a
+        /// <see cref="AchievementTierEntry.SteamAchievement"/> (an achievement without progress needs no stat),
         /// honoring <see cref="SteamDefaultUnlockMode"/>/<see cref="SteamSetStatAbsolute"/> and the optional
         /// per-entry <see cref="AchievementTierEntry.SteamAchievement"/> name. In <see cref="SteamUnlockMode.StatThreshold"/>
         /// the achievement name is left empty so <c>NativeSocial.Report</c> never calls SetAchievement (Steamworks
         /// unlocks it from the stat threshold). Pass a custom map to <c>NativeSocial.Initialize</c> for anything more exotic.
         /// </summary>
         public Dictionary<string, SteamEntry> BuildSteamMap() =>
-            Entries.Where(e => !string.IsNullOrEmpty(e.SteamStat))
+            Entries.Where(e => Targets(AchievementPlatforms.Steam) && (!string.IsNullOrEmpty(e.SteamStat) || !string.IsNullOrEmpty(e.SteamAchievement)))
                 .ToDictionary(
                     e => LocId(e.TrophyNumber, e.Tier),
                     e => new SteamEntry(
@@ -168,9 +197,9 @@ namespace Wagenheimer.NativeSocial
                         setStatAbsolute: SteamSetStatAbsolute));
 
         /// <summary>Number of entries missing a Google Play ID — for a Setup Audit "N of M achievement IDs still need to be filled in" check.</summary>
-        public int CountMissingGooglePlay() => Entries.Count(e => string.IsNullOrEmpty(e.GooglePlayId));
+        public int CountMissingGooglePlay() => !Targets(AchievementPlatforms.Android) ? 0 : Entries.Count(e => string.IsNullOrEmpty(e.GooglePlayId));
 
         /// <summary>Number of entries missing an Apple Game Center ID — for a Setup Audit "N of M achievement IDs still need to be filled in" check.</summary>
-        public int CountMissingApple() => Entries.Count(e => string.IsNullOrEmpty(e.AppleId));
+        public int CountMissingApple() => !Targets(AchievementPlatforms.Apple) ? 0 : Entries.Count(e => string.IsNullOrEmpty(e.AppleId));
     }
 }

@@ -20,6 +20,12 @@
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.rlabrecque.steamworks.net",
+            "expression": "",
+            "define": "WAGENHEIMER_NATIVESOCIAL_STEAM"
+        }
+    ],
     "noEngineReferences": false
 }
