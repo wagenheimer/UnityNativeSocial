@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
 using GooglePlayGames;
 using GooglePlayGames.BasicApi;
 #endif
@@ -116,7 +116,7 @@ namespace Wagenheimer.NativeSocial
 
         // ── Status ────────────────────────────────────────────────────
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
         /// <summary>
         /// Whether the player is currently signed in to Google Play Games. Maintained by NativeSocial's own
         /// sign-in calls (and re-checked when the game returns to the foreground); progress reported while
@@ -166,7 +166,7 @@ namespace Wagenheimer.NativeSocial
 
             // Exactly one of these branches is compiled in per build target — there is
             // no runtime platform switch here, each build only ever contains its own path.
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             ReportAndroid(locId, delta, current, completed);
 #elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             ReportIOS(locId, current, total, completed);
@@ -190,7 +190,7 @@ namespace Wagenheimer.NativeSocial
         {
             if (!_initialized || completedLocIds == null) return;
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             SyncCompletedAndroid(completedLocIds);
 #elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
             SyncCompletedIOS(completedLocIds);
@@ -219,7 +219,7 @@ namespace Wagenheimer.NativeSocial
                 return;
             }
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             RecordGameEventAndroid(eventName, properties);
 #else
             OnLog?.Invoke($"[NativeSocial] Game Stats event '{eventName}' ignored: Game Stats exists only on Google Play (Android).");
@@ -239,7 +239,7 @@ namespace Wagenheimer.NativeSocial
         /// </returns>
         public static bool ShowAchievementsUI()
         {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             if (!IsAuthenticated)
             {
                 OnLog?.Invoke("[NativeSocial] ShowAchievementsUI skipped: not authenticated with GPGS (the native screen would be empty/locked).");
@@ -282,7 +282,7 @@ namespace Wagenheimer.NativeSocial
                 return;
             }
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             Debug.Log("[NativeSocial] OpenAchievementsUI: Not authenticated. Requesting manual GPGS sign-in...");
             AuthenticateManually(success =>
             {
@@ -333,7 +333,7 @@ namespace Wagenheimer.NativeSocial
             OnSubmitScore?.Invoke(locId, score);
             OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}', score={score})");
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             if (!IsAuthenticated)
             {
                 OnLog?.Invoke($"[NativeSocial] SubmitScore('{locId}') skipped: not authenticated with GPGS.");
@@ -362,7 +362,7 @@ namespace Wagenheimer.NativeSocial
         /// <returns>True if a native UI was shown; false when there is no UI for the current platform/state.</returns>
         public static bool ShowLeaderboardUI(string locId = null)
         {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             if (!IsAuthenticated) { OnLog?.Invoke("[NativeSocial] ShowLeaderboardUI skipped: not authenticated with GPGS."); return false; }
             if (locId == null)
             {
@@ -474,7 +474,7 @@ namespace Wagenheimer.NativeSocial
                 LogAuthenticationResult("Game Center", success, success ? "signed in" : detail + MacGameCenterHint());
                 callback?.Invoke(success);
             });
-#elif UNITY_ANDROID
+#elif UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             EnsureGpgsActivated();
 
             // Say it loudly BEFORE signing in: a missing Play Games application id makes every call fail without a useful message.
@@ -511,7 +511,7 @@ namespace Wagenheimer.NativeSocial
         /// </summary>
         public static void ResetManualSignInDeclined()
         {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             PlayerPrefs.DeleteKey(ManualSignInDeclinedPrefsKey);
             PlayerPrefs.Save();
             OnLog?.Invoke("[NativeSocial] Reset manual sign-in declined flag: next startup will prompt again.");
@@ -535,7 +535,7 @@ namespace Wagenheimer.NativeSocial
         /// </summary>
         public static void AuthenticateManually(Action<bool> callback)
         {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             EnsureGpgsActivated();
             LogAndroidDiagnosticsOnce();
 
@@ -611,7 +611,7 @@ namespace Wagenheimer.NativeSocial
                     Debug.LogWarning($"[NativeSocial] Game Center authentication: Failed. Report: {LastAuthenticationReport}");
                 onComplete?.Invoke(success);
             });
-#elif UNITY_ANDROID
+#elif UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             Debug.Log("[NativeSocial] AutoConnect: Initiating Google Play Games authentication...");
             Authenticate(success =>
             {
@@ -661,7 +661,7 @@ namespace Wagenheimer.NativeSocial
         /// </summary>
         public static void GetServerAuthCode(Action<string> callback, bool forceRefreshToken = false)
         {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             if (!IsAuthenticated)
             {
                 callback?.Invoke(null);

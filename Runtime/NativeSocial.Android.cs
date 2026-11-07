@@ -1,4 +1,4 @@
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
 using System.Collections.Generic;
 using GooglePlayGames;
 using GooglePlayGames.BasicApi;

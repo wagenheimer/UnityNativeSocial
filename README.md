@@ -12,7 +12,8 @@ Platform-native social API wrapper for Unity. Replaces Unity's deprecated `Socia
 
 ### Android requirements
 
-Android features require the [Google Play Games plugin for Unity](https://github.com/playgameservices/play-games-plugin-for-unity)
+Android features are optional: without the plugin the package still compiles for Android and every call
+is a no-op. To enable them, install the [Google Play Games plugin for Unity](https://github.com/playgameservices/play-games-plugin-for-unity)
 v2+ (`com.google.play.games` package) — the same plugin also provides the achievement/leaderboard
 IDs you map in `Initialize`. The `Authenticate`/`ManuallyAuthenticate`/`GetServerAuthCode` APIs
 require plugin v11+.

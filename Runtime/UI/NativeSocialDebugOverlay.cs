@@ -850,7 +850,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             });
             row1.Add(copySnippetBtn);
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             // Reads the built manifest's Play Games application id: an empty one makes every sign-in fail.
             row1.Add(CreateActionButton("Check Config", () =>
             {
@@ -1561,7 +1561,7 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             // Unified auth state for the action buttons (filled per platform below).
             bool authenticated;
 
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
             bool isAuth = NativeSocial.IsAuthenticated;
             if (_authStatusLabel != null)
             {

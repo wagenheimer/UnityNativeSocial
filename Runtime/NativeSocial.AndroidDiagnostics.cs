@@ -10,7 +10,7 @@ namespace Wagenheimer.NativeSocial
     /// </summary>
     public static partial class NativeSocial
     {
-#if UNITY_ANDROID
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS
         private const string GpgsAppIdMetaData = "com.google.android.gms.games.APP_ID";
         private const int PackageManagerGetMetaData = 128;
         private const int MinimumAppIdDigits = 8;
@@ -167,7 +167,7 @@ namespace Wagenheimer.NativeSocial
         /// </summary>
         public static string GetAndroidDiagnostics()
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
+#if UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS && !UNITY_EDITOR
             var report = new System.Text.StringBuilder();
             try
             {
