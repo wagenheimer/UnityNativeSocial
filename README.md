@@ -221,6 +221,14 @@ Steam integration is enabled automatically — the package's asmdef defines
 `com.rlabrecque.steamworks.net` (Steamworks.NET) is present in your project.
 No manual Scripting Define Symbols setup is required.
 
+### Build Pipeline 2.0 defines
+
+`package.json` also declares the package's scripting defines for the
+[UnityBuildPipeline](https://github.com/wagenheimer/UnityBuildPipeline) 2.0 registry
+(`wagenheimer.defines`): `WAGENHEIMER_NATIVESOCIAL_STEAM`, `WAGENHEIMER_NATIVESOCIAL_GPGS`
+and `WAGENHEIMER_NATIVESOCIAL_NO_GAMECENTER`. The pipeline uses them to validate each build
+profile (for example, a Steam profile requires the Steam define) without a hand-maintained list.
+
 `SteamManager` (or wherever you boot `SteamAPI.Init()`) only starts the API; tell NativeSocial when it is
 ready, or every Steam call is a silent no-op:
 
