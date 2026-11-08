@@ -516,6 +516,19 @@ namespace Wagenheimer.NativeSocial
             if (!_initialized)
                 Debug.LogWarning("[NativeSocial] Authenticate called before Initialize: the achievement maps are not ready yet, so queued progress cannot be delivered.");
 
+            // Game Center already has a player (launch after a previous sign-in, or the game called
+            // Authenticate again): calling the native Authenticate in this state is what makes macOS
+            // re-open the Game Center login sheet every time the app regains focus. Adopt the session.
+            if (IsAuthenticated)
+            {
+                Debug.Log("[NativeSocial] Game Center already reports a signed-in player; skipping the native Authenticate call.");
+                FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
+                OnAuthenticated?.Invoke(true);
+                LogAuthenticationResult("Game Center", true, "already signed in");
+                callback?.Invoke(true);
+                return;
+            }
+
             Debug.Log("[NativeSocial] Game Center diagnostics before sign-in:\n" + GetAppleDiagnostics());
 
             try

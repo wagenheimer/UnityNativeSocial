@@ -151,6 +151,8 @@ Debug.Log(NativeSocial.GetAppleDiagnostics());
 
 On a failed sign-in `NativeSocial.Authenticate` also logs that report, and `LastAuthenticationReport` gets a specific hint (no profile / profile without the entitlement / profile for another bundle id / not installed from the App Store). The debug overlay shows the same report when signed out. Big Fish / Mac Game Store / itch / Steam macOS builds must not call Game Center — pass `enablePlatformSocial: false` (or gate on the publisher), because the Apple backend is compiled in on every non-Steam macOS build.
 
+Unity can leave the `Authenticate` callback pending forever on macOS (a known Game Center/Unity issue, especially while the system login sheet is up). Always keep a timeout and, when it expires, adopt `NativeSocial.IsAuthenticated` instead of assuming failure; `NativeSocial.Authenticate` itself now skips the native call when Game Center already reports a signed-in player, which avoids the login sheet reopening on every focus change.
+
 For granular control, you can still call the lower-level methods directly:
 
 ```csharp
