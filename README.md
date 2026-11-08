@@ -135,6 +135,22 @@ On Android, achievement progress is sent with `SetStepsAtLeast(current)` (idempo
 - Connects to Apple Game Center on iOS and Mac App Store.
 - Silently keeps progress local without throwing errors on Big Fish, Steam or generic standalone targets.
 
+### macOS Game Center (Mac App Store) — signing requirements
+
+Unity has no Game Center toggle for macOS. `GKLocalPlayer` only authenticates when the `.app` is:
+
+1. signed with the `com.apple.developer.game-center` entitlement (an `.entitlements` file);
+2. carrying a Mac App Store provisioning profile for the **same App ID** at `Contents/embedded.provisionprofile` (the profile itself must have Game Center enabled);
+3. installed from the App Store or TestFlight (`Contents/_MASReceipt/receipt` present). A local/ad-hoc copy fails even when correctly signed.
+
+The package cannot add any of that at runtime, but it tells you exactly what is missing:
+
+```csharp
+Debug.Log(NativeSocial.GetAppleDiagnostics());
+```
+
+On a failed sign-in `NativeSocial.Authenticate` also logs that report, and `LastAuthenticationReport` gets a specific hint (no profile / profile without the entitlement / profile for another bundle id / not installed from the App Store). The debug overlay shows the same report when signed out. Big Fish / Mac Game Store / itch / Steam macOS builds must not call Game Center — pass `enablePlatformSocial: false` (or gate on the publisher), because the Apple backend is compiled in on every non-Steam macOS build.
+
 For granular control, you can still call the lower-level methods directly:
 
 ```csharp

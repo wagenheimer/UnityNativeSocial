@@ -68,6 +68,7 @@ namespace Wagenheimer.NativeSocial.UI
         private Label _statusBanner;
         private Label _statusSubtext;
         private string _androidDiagnostics;
+        private string _appleDiagnostics;
         private Label _platformLabel;
         private Label _authStatusLabel;
         private Label _userLabel;
@@ -1552,9 +1553,14 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
                 _mapsCountLabel.text = $"Android: {androidCount} | iOS: {iosCount} | Steam: {steamCount}";
 
             string userString = "None";
-            if (Social.localUser != null && !string.IsNullOrEmpty(Social.localUser.userName))
+            try
             {
-                userString = $"{Social.localUser.userName} ({Social.localUser.id})";
+                if (Social.Active != null && Social.localUser != null && !string.IsNullOrEmpty(Social.localUser.userName))
+                    userString = $"{Social.localUser.userName} ({Social.localUser.id})";
+            }
+            catch
+            {
+                userString = "Unavailable (Social.Active is null)";
             }
             if (_userLabel != null) _userLabel.text = userString;
 
@@ -1592,8 +1598,8 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;
 
-#elif UNITY_IOS
-            bool isAuth = Social.localUser.authenticated;
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
+            bool isAuth = NativeSocial.IsAuthenticated;
             if (_authStatusLabel != null)
             {
                 _authStatusLabel.text = isAuth ? "Authenticated (Game Center)" : "Game Center Available";
@@ -1606,7 +1612,21 @@ NativeSocial.OnAuthenticated += AutoSyncAfterAuth;
             }
             if (_statusSubtext != null)
             {
-                _statusSubtext.text = isAuth ? "Apple Game Center authenticated and active." : "Game Center ready for authentication.";
+                if (isAuth)
+                {
+                    _statusSubtext.text = "Apple Game Center authenticated and active.";
+                }
+                else
+                {
+                    // Read once: the signing/profile state never changes at runtime, and this explains a
+                    // Mac App Store sign-in failure on the device without needing Console.app.
+                    if (_appleDiagnostics == null)
+                        _appleDiagnostics = NativeSocial.GetAppleDiagnostics();
+
+                    _statusSubtext.text = (string.IsNullOrEmpty(NativeSocial.LastAuthenticationReport)
+                        ? "Game Center ready for authentication."
+                        : NativeSocial.LastAuthenticationReport) + "\n\n" + _appleDiagnostics;
+                }
             }
             authenticated = isAuth;
             if (_floatingDot != null) _floatingDot.style.backgroundColor = isAuth ? ColorAccentGreen : ColorAccentAmber;

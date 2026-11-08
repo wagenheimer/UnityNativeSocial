@@ -1086,6 +1086,7 @@ public class NativeSocialBootstrap : MonoBehaviour
                 assetPath: code.ShowAchievementsUIPath);
 
             AuditGameCenterCapability(results);
+            AuditGameCenterMacSigning(results);
         }
 
         #endregion

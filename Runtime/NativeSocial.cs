@@ -125,6 +125,26 @@ namespace Wagenheimer.NativeSocial
         /// signed out is queued and sent after the next sign-in.
         /// </summary>
         public static bool IsAuthenticated { get; private set; }
+#elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
+        /// <summary>
+        /// Whether Game Center currently reports a signed-in player. Unity's deprecated Social facade is the
+        /// only query point Game Center exposes, so this mirrors <c>Social.localUser.authenticated</c> and
+        /// never throws when the native binding is missing (e.g. a player built without ENABLE_GAMECENTER).
+        /// </summary>
+        public static bool IsAuthenticated
+        {
+            get
+            {
+                try
+                {
+                    return Social.Active != null && Social.localUser != null && Social.localUser.authenticated;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
 #endif
 
         // ── Report ────────────────────────────────────────────────────
@@ -285,6 +305,11 @@ namespace Wagenheimer.NativeSocial
             PlayGamesPlatform.Instance.ShowAchievementsUI();
             return true;
 #elif UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
+            if (!IsAuthenticated)
+            {
+                OnLog?.Invoke("[NativeSocial] ShowAchievementsUI skipped: not authenticated with Game Center (the native screen would be empty/locked).");
+                return false;
+            }
             OnLog?.Invoke("[NativeSocial] Opening Game Center native achievements UI.");
             Social.ShowAchievementsUI();
             return true;
@@ -488,6 +513,11 @@ namespace Wagenheimer.NativeSocial
         public static void Authenticate(Action<bool> callback)
         {
 #if UNITY_IOS || (UNITY_STANDALONE_OSX && !WAGENHEIMER_NATIVESOCIAL_STEAM)
+            if (!_initialized)
+                Debug.LogWarning("[NativeSocial] Authenticate called before Initialize: the achievement maps are not ready yet, so queued progress cannot be delivered.");
+
+            Debug.Log("[NativeSocial] Game Center diagnostics before sign-in:\n" + GetAppleDiagnostics());
+
             try
             {
                 UnityEngine.SocialPlatforms.GameCenter.GameCenterPlatform.ShowDefaultAchievementCompletionBanner(true);
@@ -508,6 +538,8 @@ namespace Wagenheimer.NativeSocial
                     ? "no error message from Game Center (is Game Center enabled in Settings and the app set up in App Store Connect?)"
                     : error;
                 LogAuthenticationResult("Game Center", success, success ? "signed in" : detail + MacGameCenterHint());
+                if (!success)
+                    Debug.LogWarning("[NativeSocial] Game Center diagnostics after failed sign-in:\n" + GetAppleDiagnostics());
                 callback?.Invoke(success);
             });
 #elif UNITY_ANDROID && WAGENHEIMER_NATIVESOCIAL_GPGS

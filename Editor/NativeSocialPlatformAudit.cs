@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 using UnityEditor;
@@ -17,6 +18,7 @@ namespace Wagenheimer.NativeSocial.Editor
         private const int AspectRatioModeCustom = 2;
         private const float AspectRatioMin = 1.32f;
         private const float AspectRatioMax = 2.34f;
+        private const string GameCenterEntitlement = "com.apple.developer.game-center";
 
         /// <summary>
         /// Level Up LU-LS-GAC: landscape games must render full screen at 4:3, 16:10 and 21:9. Custom mode with
@@ -128,6 +130,44 @@ namespace Wagenheimer.NativeSocial.Editor
                 optedOut ? () => SettingsService.OpenProjectSettings("Project/Player") : (Action)null,
                 AuditSeverity.Warning,
                 whatIsThis: "Unity has no Game Center toggle. Without the entitlement in the generated Xcode project, Game Center authentication fails silently and Cloud Save cannot link the player.");
+        }
+
+        /// <summary>
+        /// macOS Game Center is controlled by code signing, not by a Unity Player Setting: the .app must be
+        /// signed with an entitlements file containing com.apple.developer.game-center AND carry a Mac App
+        /// Store provisioning profile for the same App ID. Unity does not add either. This check looks for a
+        /// prepared entitlements file in the project so the signing step is not forgotten, and points at the
+        /// runtime diagnostics (NativeSocial.GetAppleDiagnostics) when it is missing.
+        /// </summary>
+        private static void AuditGameCenterMacSigning(List<AuditResult> results)
+        {
+            string found = null;
+            try
+            {
+                foreach (var file in Directory.GetFiles(Application.dataPath, "*.entitlements", SearchOption.AllDirectories))
+                {
+                    if (File.ReadAllText(file).IndexOf(GameCenterEntitlement, StringComparison.Ordinal) < 0) continue;
+                    found = file.Replace(Application.dataPath, "Assets").Replace('\\', '/');
+                    break;
+                }
+            }
+            catch
+            {
+                // Audit must never throw: a missing/unreadable folder just means "not found".
+            }
+
+            // Don't nag Windows/Android-only projects: only report when the active target is macOS or the
+            // project already carries a Game Center entitlements file.
+            var macTarget = EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneOSX;
+            if (!macTarget && found == null) return;
+
+            Add(results, CategoryIOS, "Game Center entitlement for macOS signing", found != null,
+                $"Entitlements file with {GameCenterEntitlement} found: {found}.",
+                $"No .entitlements file with {GameCenterEntitlement} was found in the project. Unity never adds this entitlement to macOS builds: without it (and a Mac App Store provisioning profile for the same App ID) GKLocalPlayer does not authenticate and the game reports a Game Center sign-in failure.",
+                "Add com.apple.developer.game-center to the entitlements used when signing the .app for the Mac App Store (see README > macOS Game Center), then confirm with NativeSocial.GetAppleDiagnostics() in the built app.",
+                null, null,
+                AuditSeverity.Warning,
+                whatIsThis: "On macOS Game Center is controlled by code signing, not by a Player Setting. The app must be signed with com.apple.developer.game-center and embed a Mac App Store provisioning profile; a local/ad-hoc copy cannot sign in even when the code is correct.");
         }
     }
 }
