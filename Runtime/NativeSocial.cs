@@ -522,7 +522,8 @@ namespace Wagenheimer.NativeSocial
             if (IsAuthenticated)
             {
                 Debug.Log("[NativeSocial] Game Center already reports a signed-in player; skipping the native Authenticate call.");
-                FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
+                if (_initialized)
+                    FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
                 OnAuthenticated?.Invoke(true);
                 LogAuthenticationResult("Game Center", true, "already signed in");
                 callback?.Invoke(true);
@@ -544,7 +545,14 @@ namespace Wagenheimer.NativeSocial
             Social.localUser.Authenticate((success, error) =>
             {
                 if (success)
-                    FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
+                {
+                    // Before Initialize the achievement map is not ready: keep the queue for the next
+                    // Authenticate instead of clearing it with nothing sent (ReportIOS would skip it).
+                    if (_initialized)
+                        FlushPendingProgress("Game Center", entry => ReportIOS(entry.LocId, entry.Current, entry.Total, entry.Completed));
+                    else
+                        Debug.LogWarning("[NativeSocial] Game Center signed in before Initialize; queued progress was kept for the next sign-in.");
+                }
                 OnAuthenticated?.Invoke(success);
                 OnLog?.Invoke($"[NativeSocial] Game Center Authenticate: {success}");
                 var detail = string.IsNullOrEmpty(error)
