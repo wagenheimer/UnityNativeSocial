@@ -149,7 +149,7 @@ The package cannot add any of that at runtime, but it tells you exactly what is 
 Debug.Log(NativeSocial.GetAppleDiagnostics());
 ```
 
-A macOS build also runs `GameCenterMacBuildDiagnostics` after the player is produced: it inspects the `.app`, its `Contents/embedded.provisionprofile` and the bundle id, and logs which requirement is missing before anyone uploads or runs the build.
+A macOS build also needs the signing step to embed that profile and the entitlement. When the build is produced by AppDeployHub/Forge it detects NativeSocial in the built app (`ScriptingAssemblies.json`), enables the Game Center capability on the App ID through the App Store Connect API if needed, embeds the profile and **fails the build** if `com.apple.developer.game-center` cannot be granted. The package's Setup Audit still checks for a prepared `.entitlements` file for manual/standalone signing.
 
 On a failed sign-in `NativeSocial.Authenticate` also logs that report, and `LastAuthenticationReport` gets a specific hint (no profile / profile without the entitlement / profile for another bundle id / not installed from the App Store). The debug overlay shows the same report when signed out. Big Fish / Mac Game Store / itch / Steam macOS builds must not call Game Center — pass `enablePlatformSocial: false` (or gate on the publisher), because the Apple backend is compiled in on every non-Steam macOS build.
 
