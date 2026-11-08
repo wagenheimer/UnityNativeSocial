@@ -17,6 +17,41 @@
     "gpgs"
   ],
   "category": "Tools",
+  "wagenheimer": {
+    "defines": [
+      {
+        "symbol": "WAGENHEIMER_NATIVESOCIAL_STEAM",
+        "description": "Compiles NativeSocial's Steam backend (achievements, leaderboards, Steam auth). Defined automatically inside the NativeSocial assembly when Steamworks.NET is installed (versionDefine); the Build Pipeline also adds it as a global define on Steam profiles so game code can use it.",
+        "scope": "global",
+        "autoFromPackage": "com.rlabrecque.steamworks.net",
+        "requiredWhen": [
+          "steam"
+        ],
+        "platforms": [
+          "Standalone"
+        ],
+        "docsUrl": "https://github.com/wagenheimer/UnityNativeSocial#steam"
+      },
+      {
+        "symbol": "WAGENHEIMER_NATIVESOCIAL_GPGS",
+        "description": "Compiles NativeSocial's Google Play Games backend. Automatic inside the NativeSocial assembly when com.google.play.games is installed.",
+        "scope": "assembly",
+        "autoFromPackage": "com.google.play.games",
+        "platforms": [
+          "Android"
+        ]
+      },
+      {
+        "symbol": "WAGENHEIMER_NATIVESOCIAL_NO_GAMECENTER",
+        "description": "Opt-out: skips the iOS build step that adds the Game Center capability to the Xcode project. Only for titles that ship without Game Center (GKLocalPlayer will not authenticate and Cloud Save stays anonymous).",
+        "scope": "global",
+        "platforms": [
+          "iOS"
+        ],
+        "severity": "warning"
+      }
+    ]
+  },
   "dependencies": {
     "com.wagenheimer.packagehub": "https://github.com/wagenheimer/UnityPackageHub.git"
   }
