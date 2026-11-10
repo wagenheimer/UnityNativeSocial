@@ -262,7 +262,9 @@ namespace Wagenheimer.NativeSocial.Editor.UI
                 "Steam can unlock a tier two ways. \"Stat threshold\" keeps the legacy Storm Tale 2 behavior: the game only writes the Steam stat (e.g. Trophy1_1_Status) and you configure each achievement on the Steamworks partner site to unlock when that stat reaches the tier value - the game never calls SetAchievement. \"Explicit achievement\" unlocks it from the game when the tier is completed.");
 
             card.Add(new PropertyField(_so.FindProperty("SteamDefaultUnlockMode"), "Unlock model"));
-            card.Add(new PropertyField(_so.FindProperty("SteamSetStatAbsolute"), "Write stat as absolute counter (legacy)"));
+            var absField = new PropertyField(_so.FindProperty("SteamSetStatAbsolute"), "Write stat as absolute counter");
+            absField.tooltip = "When enabled, NativeSocial writes the exact cumulative total from save data (current) to Steam (SetStat(stat, current)). When disabled, it increments by delta.";
+            card.Add(absField);
 
             _steamModelHelp = new Label { style = { whiteSpace = WhiteSpace.Normal, marginTop = 6, fontSize = 10, color = NativeSocialUIStyle.ColorTextMuted } };
             card.Add(_steamModelHelp);
@@ -280,10 +282,26 @@ namespace Wagenheimer.NativeSocial.Editor.UI
             var mode = (SteamUnlockMode)(modeProp != null ? modeProp.enumValueIndex : (int)SteamUnlockMode.ExplicitAchievement);
             var absolute = absoluteProp != null && absoluteProp.boolValue;
 
-            _steamModelHelp.text = mode == SteamUnlockMode.StatThreshold
-                ? "Stat threshold: the game writes the stat only" + (absolute ? " as the absolute counter value" : " by adding the reported delta") +
-                  ". No SetAchievement is called - on Steamworks, each of the 54 achievements must be configured to unlock from its stat's threshold. This is exactly what the legacy AchievementsSteam code did."
-                : "Explicit achievement: on completion the game calls SetAchievement with the tier's \"Steam achievement\" name (falling back to the stat name when empty). Leave \"Steam achievement\" empty only if your Steamworks achievement shares the stat's API name.";
+            var sb = new StringBuilder();
+            if (mode == SteamUnlockMode.StatThreshold)
+            {
+                sb.AppendLine("⚠️ Stat Threshold: game writes stats only (no SetAchievement). On Steamworks, each achievement must have an unlock rule on its stat threshold.");
+            }
+            else
+            {
+                sb.AppendLine("✓ Explicit Achievement (Recommended): on completion the game calls SetAchievement directly. Stats are also updated for Steam overlay progress.");
+            }
+
+            if (absolute)
+            {
+                sb.Append("• Stat value: writes absolute counter (current). Best for games tracking cumulative save totals (idempotent & safe).");
+            }
+            else
+            {
+                sb.Append("• Stat value: adds delta to Steam's cached counter. Use only if game does not store cumulative totals.");
+            }
+
+            _steamModelHelp.text = sb.ToString();
         }
 
         // ── AppDeployHub (online) ────────────────────────────────────────────────

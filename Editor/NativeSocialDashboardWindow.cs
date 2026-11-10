@@ -21,6 +21,7 @@ namespace Wagenheimer.NativeSocial.Editor
         {
             SetupAudit,
             PlayGamesSetup,
+            SteamSetup,
             Achievements,
             LiveTester,
             Checklist,
@@ -33,6 +34,9 @@ namespace Wagenheimer.NativeSocial.Editor
 
         [MenuItem("Tools/Wagenheimer/Native Social/Dashboard...", priority = 0)]
         public static void OpenDashboard() => Open(Tab.SetupAudit);
+
+        [MenuItem("Tools/Wagenheimer/Native Social/Steam Setup...", priority = 15)]
+        public static void OpenSteamSetupTab() => Open(Tab.SteamSetup);
 
         public static void ShowWindow() => Open(Tab.SetupAudit);
 
@@ -116,6 +120,7 @@ namespace Wagenheimer.NativeSocial.Editor
             {
                 (Tab.SetupAudit, "🔍", "Setup Audit"),
                 (Tab.PlayGamesSetup, "🎮", "Play Games"),
+                (Tab.SteamSetup, "🖥️", "Steam Setup"),
                 (Tab.Achievements, "🏆", "Achievements"),
                 (Tab.LiveTester, "🧪", "Live Tester"),
                 (Tab.Checklist, "📋", "Checklist"),
@@ -149,6 +154,7 @@ namespace Wagenheimer.NativeSocial.Editor
             {
                 Tab.SetupAudit => new NativeSocialAuditView().Root,
                 Tab.PlayGamesSetup => new NativeSocialGpgsSetupView().Root,
+                Tab.SteamSetup => new NativeSocialSteamSetupView().Root,
                 Tab.Achievements => new NativeSocialAchievementsView().Root,
                 Tab.LiveTester => new NativeSocialHelperView().Root,
                 Tab.Checklist => new NativeSocialChecklistView().Root,
